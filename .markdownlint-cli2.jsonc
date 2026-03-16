@@ -1,0 +1,6 @@
+{
+  "globs": [
+    "*.md",
+    "!node_modules/**"
+  ]
+}
