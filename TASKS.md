@@ -34,7 +34,7 @@ Agents must:
 
 ## T1. Create initial database migration
 
-Status: [ ]
+Status: [x]
 
 Create `database/migrations/001_initial_schema.sql`.
 
@@ -66,7 +66,7 @@ Use assumptions from project documentation.
 
 ## T2. Create database helper modules
 
-Status: [ ]
+Status: [x]
 
 Create typed database helper modules under `lib/db/`.
 
@@ -89,7 +89,7 @@ Requirements:
 
 ## T3. Create shared TypeScript types
 
-Status: [ ]
+Status: [x]
 
 Create shared types under `types/`.
 
@@ -194,19 +194,41 @@ No heavy processing allowed.
 
 ## T9. Create job creation route
 
-Status: [ ]
+Status: [x]
 
 Create `POST /api/jobs/create`.
 
+Purpose:
+
+Create a job only after a source media file has already been uploaded to storage.
+
 Responsibilities:
 
-- validate payload
+- authenticate the user
+- validate request payload from `unknown`
+- verify the uploaded source object exists in storage
+- verify the source object belongs to the authenticated user
+- validate `outputMode`
+- validate and deduplicate `targetLanguages`
+- validate V1 duration and media constraints
 - estimate credits
-- reserve credits
-- create job
-- create job_targets
-- return job ID and estimated credits
+- reserve credits using ledger-based logic
+- create `jobs`
+- create `job_targets`
+- return job summary payload
 
+Request payload:
+
+```json
+{
+  "storageBucket": "media",
+  "storagePath": "uploads/{userId}/{uploadId}/source.mp4",
+  "sourceFilename": "interview.mp4",
+  "sourceMimeType": "video/mp4",
+  "durationSeconds": 120,
+  "outputMode": "subtitles",
+  "targetLanguages": ["fr", "es"]
+}
 Must follow credit rules from project docs.
 
 ---
