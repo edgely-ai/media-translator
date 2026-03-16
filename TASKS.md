@@ -178,7 +178,7 @@ Include:
 
 ## T8. Create upload init route
 
-Status: [ ]
+Status: [x]
 
 Create `POST /api/uploads/init`.
 
