@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { extname } from "node:path";
 
+export const UPLOAD_STORAGE_BUCKET = "media" as const;
 export const MAX_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024;
 export const MAX_MEDIA_DURATION_SECONDS = 5 * 60;
 
-const ALLOWED_MIME_TYPES = new Set([
+export const ALLOWED_UPLOAD_MIME_TYPES = [
   "audio/mpeg",
   "audio/mp4",
   "audio/wav",
@@ -13,16 +14,19 @@ const ALLOWED_MIME_TYPES = new Set([
   "video/mp4",
   "video/quicktime",
   "video/webm",
-]);
+];
 
-const ALLOWED_EXTENSIONS = new Set([
+export const ALLOWED_UPLOAD_EXTENSIONS = [
   ".m4a",
   ".mov",
   ".mp3",
   ".mp4",
   ".wav",
   ".webm",
-]);
+];
+
+const ALLOWED_MIME_TYPES = new Set(ALLOWED_UPLOAD_MIME_TYPES);
+const ALLOWED_EXTENSIONS = new Set(ALLOWED_UPLOAD_EXTENSIONS);
 
 export interface UploadInitRequest {
   filename: string;
@@ -33,7 +37,7 @@ export interface UploadInitRequest {
 
 export interface UploadInitResponse {
   uploadId: string;
-  storageBucket: "media";
+  storageBucket: typeof UPLOAD_STORAGE_BUCKET;
   storagePath: string;
   maxFileSizeBytes: number;
   acceptedMimeTypes: string[];
@@ -46,6 +50,18 @@ export interface UploadValidationResult {
 
 function normalizeFilename(filename: string): string {
   return filename.trim().replace(/\s+/g, "-").replace(/[^A-Za-z0-9._-]/g, "");
+}
+
+export function getNormalizedUploadFilename(filename: string): string {
+  return normalizeFilename(filename);
+}
+
+export function isSupportedUploadMimeType(mimeType: string): boolean {
+  return ALLOWED_MIME_TYPES.has(mimeType);
+}
+
+export function isSupportedUploadExtension(extension: string): boolean {
+  return ALLOWED_EXTENSIONS.has(extension.toLowerCase());
 }
 
 function validateFilename(filename: string): UploadValidationResult {
@@ -140,6 +156,7 @@ export function validateUploadInitRequest(
 }
 
 export function buildUploadInitResponse(
+  userId: string,
   input: UploadInitRequest,
 ): UploadInitResponse {
   const normalizedFilename = normalizeFilename(input.filename);
@@ -148,8 +165,8 @@ export function buildUploadInitResponse(
 
   return {
     uploadId,
-    storageBucket: "media",
-    storagePath: `uploads/${uploadId}/source${extension}`,
+    storageBucket: UPLOAD_STORAGE_BUCKET,
+    storagePath: `uploads/${userId}/${uploadId}/source${extension}`,
     maxFileSizeBytes: MAX_UPLOAD_SIZE_BYTES,
     acceptedMimeTypes: [...ALLOWED_MIME_TYPES].sort(),
   };

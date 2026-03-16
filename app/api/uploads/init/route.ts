@@ -5,6 +5,7 @@ import {
   validateUploadInitRequest,
   type UploadInitRequest,
 } from "@/lib/storage/upload-init";
+import { getAuthenticatedUserFromRequest } from "@/lib/supabase/server";
 
 function isUploadInitRequest(value: unknown): value is UploadInitRequest {
   if (!value || typeof value !== "object") {
@@ -35,6 +36,15 @@ export async function POST(request: Request) {
     );
   }
 
+  const user = await getAuthenticatedUserFromRequest(request);
+
+  if (!user) {
+    return NextResponse.json(
+      { error: "Authentication is required." },
+      { status: 401 },
+    );
+  }
+
   if (!isUploadInitRequest(body)) {
     return NextResponse.json(
       {
@@ -54,5 +64,7 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json(buildUploadInitResponse(body), { status: 200 });
+  return NextResponse.json(buildUploadInitResponse(user.id, body), {
+    status: 200,
+  });
 }

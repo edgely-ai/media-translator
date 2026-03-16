@@ -70,3 +70,26 @@ export interface JobTargetRow {
   updated_at: string;
   completed_at: string | null;
 }
+
+export interface CreateJobRequest {
+  storageBucket: string;
+  storagePath: string;
+  sourceFilename: string;
+  sourceMimeType: string;
+  durationSeconds: number;
+  outputMode: OutputMode;
+  targetLanguages: string[];
+}
+
+export interface CreateJobResponse {
+  jobId: string;
+  status: JobStatus;
+  outputMode: OutputMode;
+  storageBucket: "media";
+  storagePath: string;
+  durationSeconds: number;
+  targetLanguages: string[];
+  estimatedCredits: number;
+  reservedCredits: number;
+  targetCount: number;
+}
