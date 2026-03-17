@@ -189,6 +189,30 @@ export default async function JobDetailPage({
                     </div>
 
                     <div className="flex flex-col gap-3 md:items-end">
+                      {target.subtitlePath ? (
+                        <div className="flex flex-wrap justify-end gap-3">
+                          <a
+                            href={`/${target.subtitlePath}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex h-11 items-center justify-center rounded-full border border-sky-700 px-5 text-sm font-semibold text-sky-700 transition hover:bg-sky-700 hover:text-white"
+                          >
+                            View subtitles
+                          </a>
+                          <a
+                            href={`/${target.subtitlePath}`}
+                            download
+                            className="inline-flex h-11 items-center justify-center rounded-full bg-sky-600 px-5 text-sm font-semibold text-white transition hover:bg-sky-500"
+                          >
+                            Download subtitles
+                          </a>
+                        </div>
+                      ) : (
+                        <div className="rounded-full border border-dashed border-stone-300 px-4 py-3 text-sm text-stone-500">
+                          Subtitle download appears after subtitle generation succeeds
+                        </div>
+                      )}
+
                       {target.dubbedAudioPath ? (
                         <a
                           href={`/${target.dubbedAudioPath}`}
@@ -251,9 +275,10 @@ export default async function JobDetailPage({
               <div className="rounded-2xl bg-stone-50 p-4">
                 <p className="font-medium text-stone-800">Download behavior</p>
                 <p className="mt-1 leading-6">
-                  Successful targets expose direct links for audio and video when
-                  those artifacts exist. In-progress and failed targets keep their
-                  current state visible instead of pretending the output is ready.
+                  Successful targets expose subtitle, audio, and video actions
+                  only when those artifacts exist. In-progress and failed targets
+                  keep their current state visible instead of pretending the
+                  output is ready.
                 </p>
               </div>
               <div className="rounded-2xl bg-stone-50 p-4">

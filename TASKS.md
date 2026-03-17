@@ -432,10 +432,10 @@ Responsibilities:
 
 ## T22. Add subtitle downloads to job detail page
 
-Status: [ ]
+Status: [x]
 
 Note:
-- T25 and T29 were completed ahead of this task; subtitle download wiring remains open.
+- T25 and T29 were completed ahead of this task; subtitle downloads are now wired into the job detail UI.
 
 Update UI to show downloadable subtitle files per target language.
 
