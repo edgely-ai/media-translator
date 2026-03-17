@@ -19,6 +19,12 @@ export interface DatabaseExecutor {
   ): Promise<DatabaseQueryResult<TRow>>;
 }
 
+export interface TransactionCapableDatabaseExecutor extends DatabaseExecutor {
+  transaction<T>(
+    callback: (db: DatabaseExecutor) => Promise<T>,
+  ): Promise<T>;
+}
+
 export class DatabaseRecordNotFoundError extends Error {
   constructor(message: string) {
     super(message);
@@ -76,4 +82,17 @@ export async function requireOne<TRow>(
   }
 
   return row;
+}
+
+export async function runInTransactionIfAvailable<T>(
+  db: DatabaseExecutor,
+  callback: (db: DatabaseExecutor) => Promise<T>,
+): Promise<T> {
+  const candidate = db as Partial<TransactionCapableDatabaseExecutor>;
+
+  if (typeof candidate.transaction === "function") {
+    return candidate.transaction(callback);
+  }
+
+  return callback(db);
 }

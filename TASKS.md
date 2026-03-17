@@ -277,7 +277,7 @@ Multipliers:
 
 ## T12. Implement credit reservation/finalization logic
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -305,7 +305,7 @@ Update dashboard and billing page to show live credit values from the database.
 
 ## T14. Implement media normalization
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -321,7 +321,7 @@ Requirements:
 
 ## T15. Implement audio extraction
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -339,7 +339,7 @@ Requirements:
 
 ## T16. Implement transcription provider abstraction
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -355,7 +355,7 @@ Requirements:
 
 ## T17. Implement transcript persistence
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -388,7 +388,7 @@ Use an API route if needed.
 
 ## T19. Implement translation provider abstraction
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -398,7 +398,7 @@ Create:
 
 ## T20. Implement transcript translation
 
-Status: [ ]
+Status: [x]
 
 Create:
 

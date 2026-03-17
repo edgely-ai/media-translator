@@ -19,3 +19,35 @@ export interface TranslatedSegmentRow {
   created_at: string;
   updated_at: string;
 }
+
+export interface TranscriptionSegment {
+  segmentIndex: number;
+  startMs: number;
+  endMs: number;
+  text: string;
+}
+
+export interface TranscriptionResult {
+  provider: string;
+  providerResponseId: string | null;
+  detectedLanguage: string | null;
+  segments: TranscriptionSegment[];
+}
+
+export interface TranslationSegmentInput {
+  segmentIndex: number;
+  text: string;
+}
+
+export interface TranslationSegmentResult {
+  segmentIndex: number;
+  translatedText: string;
+}
+
+export interface TranslationResult {
+  provider: string;
+  providerResponseId: string | null;
+  sourceLanguage: string | null;
+  targetLanguage: string;
+  segments: TranslationSegmentResult[];
+}

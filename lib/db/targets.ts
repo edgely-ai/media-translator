@@ -71,27 +71,58 @@ export async function updateJobTargetStatus(
   db: DatabaseExecutor,
   input: UpdateJobTargetStatusInput,
 ): Promise<JobTargetRow> {
+  const hasSubtitlePath = Object.prototype.hasOwnProperty.call(
+    input,
+    "subtitlePath",
+  );
+  const hasDubbedAudioPath = Object.prototype.hasOwnProperty.call(
+    input,
+    "dubbedAudioPath",
+  );
+  const hasDubbedVideoPath = Object.prototype.hasOwnProperty.call(
+    input,
+    "dubbedVideoPath",
+  );
+  const hasProviderJobId = Object.prototype.hasOwnProperty.call(
+    input,
+    "providerJobId",
+  );
+  const hasErrorMessage = Object.prototype.hasOwnProperty.call(
+    input,
+    "errorMessage",
+  );
+  const hasCompletedAt = Object.prototype.hasOwnProperty.call(
+    input,
+    "completedAt",
+  );
+
   return requireOne<JobTargetRow>(
     db,
     `UPDATE job_targets
      SET status = $2,
-         subtitle_path = COALESCE($3, subtitle_path),
-         dubbed_audio_path = COALESCE($4, dubbed_audio_path),
-         dubbed_video_path = COALESCE($5, dubbed_video_path),
-         provider_job_id = COALESCE($6, provider_job_id),
-         error_message = COALESCE($7, error_message),
-         completed_at = COALESCE($8, completed_at),
+         subtitle_path = CASE WHEN $3 THEN $4 ELSE subtitle_path END,
+         dubbed_audio_path = CASE WHEN $5 THEN $6 ELSE dubbed_audio_path END,
+         dubbed_video_path = CASE WHEN $7 THEN $8 ELSE dubbed_video_path END,
+         provider_job_id = CASE WHEN $9 THEN $10 ELSE provider_job_id END,
+         error_message = CASE WHEN $11 THEN $12 ELSE error_message END,
+         completed_at = CASE WHEN $13 THEN $14 ELSE completed_at END,
          updated_at = now()
      WHERE id = $1
      RETURNING *`,
     [
       input.targetId,
       input.status,
+      hasSubtitlePath,
       input.subtitlePath ?? null,
+      hasDubbedAudioPath,
       input.dubbedAudioPath ?? null,
+      hasDubbedVideoPath,
       input.dubbedVideoPath ?? null,
+      hasProviderJobId,
       input.providerJobId ?? null,
+      hasErrorMessage,
       input.errorMessage ?? null,
+      hasCompletedAt,
       input.completedAt ?? null,
     ],
     `Job target ${input.targetId} was not found.`,

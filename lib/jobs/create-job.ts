@@ -2,6 +2,7 @@ import { basename, extname, posix } from "node:path";
 
 import type { User } from "@supabase/supabase-js";
 
+import { calculateCredits } from "@/lib/credits/calculateCredits";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import {
   ALLOWED_UPLOAD_MIME_TYPES,
@@ -113,18 +114,6 @@ function normalizeAndValidateTargetLanguages(
   return unique;
 }
 
-function estimateCredits(
-  durationSeconds: number,
-  targetCount: number,
-  outputMode: OutputMode,
-): number {
-  const durationMinutes = Math.ceil(durationSeconds / 60);
-  const multiplier =
-    outputMode === "subtitles" ? 1 : outputMode === "dubbed_audio" ? 1.5 : 3;
-
-  return Math.ceil(durationMinutes * targetCount * multiplier);
-}
-
 function validateCreateJobRequest(
   input: CreateJobRequest,
   user: User,
@@ -210,11 +199,11 @@ function validateCreateJobRequest(
   const targetLanguages = normalizeAndValidateTargetLanguages(
     input.targetLanguages,
   );
-  const estimatedCredits = estimateCredits(
-    input.durationSeconds,
-    targetLanguages.length,
-    input.outputMode,
-  );
+  const estimatedCredits = calculateCredits({
+    durationSeconds: input.durationSeconds,
+    targetCount: targetLanguages.length,
+    outputMode: input.outputMode,
+  });
 
   return {
     outputMode: input.outputMode,

@@ -5,6 +5,13 @@ import type {
   ProfileCreditBalanceRow,
 } from "@/types/credits";
 
+export interface JobCreditLedgerSummary {
+  job_id: string;
+  reserved_credits: number;
+  finalized_credits: number;
+  released_credits: number;
+}
+
 export interface CreateCreditLedgerEntryInput {
   profileId: string;
   jobId?: string | null;
@@ -69,7 +76,17 @@ export async function getCreditBalanceByProfileId(
 ): Promise<number> {
   const rows = await queryMany<ProfileCreditBalanceRow>(
     db,
-    `SELECT profile_id, COALESCE(SUM(amount), 0)::int AS balance
+    `SELECT profile_id,
+            COALESCE(
+              SUM(
+                CASE
+                  WHEN entry_type IN ('reserve', 'release', 'grant', 'adjustment')
+                    THEN amount
+                  ELSE 0
+                END
+              ),
+              0
+            )::int AS balance
      FROM credit_ledger
      WHERE profile_id = $1
      GROUP BY profile_id`,
@@ -77,4 +94,31 @@ export async function getCreditBalanceByProfileId(
   );
 
   return rows[0]?.balance ?? 0;
+}
+
+export async function getJobCreditLedgerSummary(
+  db: DatabaseExecutor,
+  jobId: string,
+): Promise<JobCreditLedgerSummary> {
+  return requireOne<JobCreditLedgerSummary>(
+    db,
+    `SELECT
+       $1::uuid AS job_id,
+       COALESCE(
+         SUM(CASE WHEN entry_type = 'reserve' THEN amount * -1 ELSE 0 END),
+         0
+       )::int AS reserved_credits,
+       COALESCE(
+         SUM(CASE WHEN entry_type = 'finalize' THEN amount ELSE 0 END),
+         0
+       )::int AS finalized_credits,
+       COALESCE(
+         SUM(CASE WHEN entry_type = 'release' THEN amount ELSE 0 END),
+         0
+       )::int AS released_credits
+     FROM credit_ledger
+     WHERE job_id = $1`,
+    [jobId],
+    `Unable to summarize credit ledger for job ${jobId}.`,
+  );
 }
