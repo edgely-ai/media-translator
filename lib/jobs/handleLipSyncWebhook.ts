@@ -37,6 +37,16 @@ export interface HandleLipSyncWebhookResult {
   jobStatus: JobStatus;
 }
 
+function shouldIgnoreWebhookUpdate(
+  target: JobTargetWebhookRow,
+  payload: LipSyncWebhookPayload,
+): boolean {
+  return (
+    target.status === TARGET_STATE.COMPLETED &&
+    payload.status === TARGET_STATE.FAILED
+  );
+}
+
 function requireWebhookSecret(): string {
   const secret = process.env.LIPSYNC_WEBHOOK_SECRET;
 
@@ -134,6 +144,18 @@ export async function handleLipSyncWebhook(
 
   if (!target) {
     throw new LipSyncWebhookError(404, "Unknown providerJobId.");
+  }
+
+  if (shouldIgnoreWebhookUpdate(target, payload)) {
+    const reconciliation = await reconcileJobOutputs(target.job_id);
+
+    return {
+      jobId: target.job_id,
+      targetId: target.id,
+      targetLanguage: target.target_language,
+      targetStatus: target.status,
+      jobStatus: reconciliation.status,
+    };
   }
 
   const nextTargetStatus =

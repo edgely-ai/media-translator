@@ -32,6 +32,11 @@ type PlanBillingRow = {
   stripe_price_id: string | null;
 };
 
+type ExistingGrantRow = {
+  id: string;
+  amount: number;
+};
+
 export interface HandleStripeWebhookResult {
   stripeEventId: string;
   eventType: string;
@@ -267,6 +272,25 @@ async function grantRenewalCredits(
 
   const description = `Monthly credit refill for ${plan.name} via invoice ${invoice.id}`;
   const supabase = createSupabaseAdminClient();
+  const { data: existingGrant, error: existingGrantError } = await supabase
+    .from("credit_ledger")
+    .select("id, amount")
+    .eq("profile_id", profile.id)
+    .eq("entry_type", "grant")
+    .eq("description", description)
+    .maybeSingle<ExistingGrantRow>();
+
+  if (existingGrantError) {
+    throw new StripeWebhookRouteError(
+      500,
+      "Failed to verify existing renewal credit grant.",
+    );
+  }
+
+  if (existingGrant) {
+    return 0;
+  }
+
   const { error } = await supabase.from("credit_ledger").insert({
     profile_id: profile.id,
     job_id: null,
