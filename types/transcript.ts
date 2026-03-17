@@ -59,3 +59,22 @@ export interface TranslationResult {
   targetLanguage: string;
   segments: TranslationSegmentResult[];
 }
+
+export interface TranscriptEditorSegment {
+  id: string;
+  segmentIndex: number;
+  startMs: number;
+  endMs: number;
+  sourceText: string;
+  editedSourceText: string | null;
+}
+
+export interface JobTranscriptResponse {
+  jobId: string;
+  segments: TranscriptEditorSegment[];
+}
+
+export interface UpdateTranscriptSegmentInput {
+  id: string;
+  editedSourceText: string | null;
+}

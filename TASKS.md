@@ -295,7 +295,7 @@ Requirements:
 
 ## T13. Show real credit balances in UI
 
-Status: [ ]
+Status: [x]
 
 Update dashboard and billing page to show live credit values from the database.
 
@@ -372,7 +372,7 @@ Responsibilities:
 
 ## T18. Build transcript editor UI
 
-Status: [ ]
+Status: [x]
 
 Update the job detail page to:
 

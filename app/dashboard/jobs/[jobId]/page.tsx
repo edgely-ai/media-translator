@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { TranscriptEditorPanel } from "@/components/transcript-editor-panel";
+
 type JobTargetOutput = {
   id: string;
   languageLabel: string;
@@ -110,6 +112,8 @@ export default async function JobDetailPage({
             </span>
           </div>
         </section>
+
+        <TranscriptEditorPanel jobId={jobId} />
 
         <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
