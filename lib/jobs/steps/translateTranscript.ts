@@ -1,4 +1,5 @@
 import { translateSegments } from "@/lib/ai/translate";
+import { JOB_STATE, TARGET_STATE } from "@/lib/jobs/jobStates";
 import {
   runInTransactionIfAvailable,
   type DatabaseExecutor,
@@ -11,11 +12,6 @@ import {
   updateJobTargetStatus,
 } from "@/lib/db/targets";
 import type { TranslationResult } from "@/types/transcript";
-
-const JOB_TRANSLATING_STATUS = "translating";
-const TARGET_TRANSLATING_STATUS = "translating";
-const TARGET_FAILED_STATUS = "failed";
-const JOB_FAILED_STATUS = "failed";
 
 export interface TranslateTranscriptInput {
   jobId: string;
@@ -79,7 +75,7 @@ export async function translateTranscript(
 
   await updateJobStatus(db, {
     jobId: input.jobId,
-    status: JOB_TRANSLATING_STATUS,
+    status: JOB_STATE.TRANSLATING,
     errorMessage: null,
     completedAt: null,
   });
@@ -91,7 +87,7 @@ export async function translateTranscript(
       try {
         await updateJobTargetStatus(db, {
           targetId: target.id,
-          status: TARGET_TRANSLATING_STATUS,
+          status: TARGET_STATE.TRANSLATING,
           errorMessage: null,
           completedAt: null,
         });
@@ -129,7 +125,7 @@ export async function translateTranscript(
 
         await updateJobTargetStatus(db, {
           targetId: target.id,
-          status: TARGET_FAILED_STATUS,
+          status: TARGET_STATE.FAILED,
           errorMessage: targetErrorMessage,
           completedAt: null,
         });
@@ -145,7 +141,7 @@ export async function translateTranscript(
 
     await updateJobStatus(db, {
       jobId: input.jobId,
-      status: JOB_FAILED_STATUS,
+      status: JOB_STATE.FAILED,
       errorMessage,
       completedAt: null,
     });

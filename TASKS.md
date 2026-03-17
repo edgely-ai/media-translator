@@ -235,7 +235,7 @@ Must follow credit rules from project docs.
 
 ## T10. Wire dashboard upload flow
 
-Status: [ ]
+Status: [x]
 
 Connect the dashboard upload UI to:
 
@@ -257,7 +257,7 @@ No worker processing yet.
 
 ## T11. Implement credit calculation module
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -415,7 +415,7 @@ Responsibilities:
 
 ## T21. Implement subtitle generation
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -442,7 +442,7 @@ Update UI to show downloadable subtitle files per target language.
 
 ## T23. Implement TTS provider abstraction
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -452,7 +452,7 @@ Create:
 
 ## T24. Implement dubbed audio generation
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -469,7 +469,7 @@ Responsibilities:
 
 ## T25. Add dubbed audio downloads to job detail page
 
-Status: [ ]
+Status: [x]
 
 Update UI to show downloadable dubbed audio files.
 
@@ -479,7 +479,7 @@ Update UI to show downloadable dubbed audio files.
 
 ## T26. Implement lip-sync provider abstraction
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -489,7 +489,7 @@ Create:
 
 ## T27. Implement lip-sync request step
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -505,7 +505,7 @@ Responsibilities:
 
 ## T28. Implement lip-sync webhook route
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -522,7 +522,7 @@ Responsibilities:
 
 ## T29. Add lip-sync outputs to job detail page
 
-Status: [ ]
+Status: [x]
 
 Update UI to show lip-sync video download/view options.
 
@@ -532,7 +532,7 @@ Update UI to show lip-sync video download/view options.
 
 ## T30. Implement job states module
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -544,7 +544,7 @@ Centralize valid state names and transitions.
 
 ## T31. Implement job enqueue function
 
-Status: [ ]
+Status: [x]
 
 Create:
 

@@ -1,0 +1,221 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import { getJobById, updateJobStatus } from "@/lib/db/jobs";
+import { JOB_STATE, TARGET_STATE } from "@/lib/jobs/jobStates";
+import {
+  listSubtitleSegmentsByJobTargetId,
+} from "@/lib/db/translatedSegments";
+import { listTargetsByJobId, updateJobTargetStatus } from "@/lib/db/targets";
+import type { DatabaseExecutor } from "@/lib/db/client";
+import type { JobRow } from "@/types/jobs";
+import type { SubtitleSegmentRow } from "@/types/transcript";
+
+const STEP_NAME = "generateSubtitles";
+export interface GenerateSubtitlesInput {
+  jobId: string;
+  outputRootDir?: string;
+}
+
+export interface GeneratedSubtitleResult {
+  targetId: string;
+  targetLanguage: string;
+  subtitlePath: string;
+}
+
+function formatSrtTimestamp(totalMilliseconds: number): string {
+  const safeMilliseconds = Math.max(0, Math.floor(totalMilliseconds));
+  const hours = Math.floor(safeMilliseconds / 3_600_000);
+  const minutes = Math.floor((safeMilliseconds % 3_600_000) / 60_000);
+  const seconds = Math.floor((safeMilliseconds % 60_000) / 1_000);
+  const milliseconds = safeMilliseconds % 1_000;
+
+  return [
+    hours.toString().padStart(2, "0"),
+    minutes.toString().padStart(2, "0"),
+    seconds.toString().padStart(2, "0"),
+  ].join(":") + `,${milliseconds.toString().padStart(3, "0")}`;
+}
+
+function validateSubtitleSegments(segments: SubtitleSegmentRow[]): void {
+  if (segments.length === 0) {
+    throw new Error("Translated segments are required before generating subtitles.");
+  }
+
+  segments.forEach((segment, index) => {
+    if (segment.segment_index !== index) {
+      throw new Error(
+        `Subtitle segments must be sequential starting at 0. Expected ${index}, received ${segment.segment_index}.`,
+      );
+    }
+
+    if (segment.source_end_ms <= segment.source_start_ms) {
+      throw new Error(
+        `Subtitle segment ${segment.segment_index} must end after it starts.`,
+      );
+    }
+
+    if (!segment.translated_text.trim()) {
+      throw new Error(
+        `Subtitle segment ${segment.segment_index} must contain translated text.`,
+      );
+    }
+  });
+}
+
+function buildSrtContent(segments: SubtitleSegmentRow[]): string {
+  return segments
+    .map((segment, index) => {
+      const text = segment.translated_text.trim().replace(/\r\n/g, "\n");
+
+      return [
+        String(index + 1),
+        `${formatSrtTimestamp(segment.source_start_ms)} --> ${formatSrtTimestamp(segment.source_end_ms)}`,
+        text,
+      ].join("\n");
+    })
+    .join("\n\n") + "\n";
+}
+
+function buildSubtitlePath(
+  jobId: string,
+  targetLanguage: string,
+  outputRootDir = "media",
+): string {
+  return join(outputRootDir, jobId, "subtitles", `${targetLanguage}.srt`);
+}
+
+function getSuccessJobStatus(job: JobRow): JobRow["status"] {
+  if (job.output_mode === "subtitles") {
+    return JOB_STATE.COMPLETED;
+  }
+
+  return JOB_STATE.GENERATING_DUBBED_AUDIO;
+}
+
+export async function generateSubtitles(
+  db: DatabaseExecutor,
+  input: GenerateSubtitlesInput,
+): Promise<GeneratedSubtitleResult[]> {
+  const startedAt = Date.now();
+  const job = await getJobById(db, input.jobId);
+
+  if (!job) {
+    throw new Error(`Job ${input.jobId} was not found.`);
+  }
+
+  const targets = await listTargetsByJobId(db, input.jobId);
+
+  if (targets.length === 0) {
+    throw new Error(`Job ${input.jobId} has no targets for subtitle generation.`);
+  }
+
+  console.info("[jobs] step started", {
+    job_id: input.jobId,
+    step: STEP_NAME,
+    target_count: targets.length,
+  });
+
+  await updateJobStatus(db, {
+    jobId: input.jobId,
+    status: JOB_STATE.GENERATING_SUBTITLES,
+    errorMessage: null,
+    completedAt: null,
+  });
+
+  const successes: GeneratedSubtitleResult[] = [];
+  const failures: string[] = [];
+
+  for (const target of targets) {
+    try {
+      const segments = await listSubtitleSegmentsByJobTargetId(db, target.id);
+
+      validateSubtitleSegments(segments);
+
+      const subtitlePath = buildSubtitlePath(
+        input.jobId,
+        target.target_language,
+        input.outputRootDir,
+      );
+      const subtitleContent = buildSrtContent(segments);
+
+      await mkdir(join(input.outputRootDir ?? "media", input.jobId, "subtitles"), {
+        recursive: true,
+      });
+      await writeFile(subtitlePath, subtitleContent, "utf8");
+
+      await updateJobTargetStatus(db, {
+        targetId: target.id,
+        status: TARGET_STATE.SUBTITLES_READY,
+        subtitlePath,
+        errorMessage: null,
+        completedAt:
+          job.output_mode === "subtitles" ? new Date().toISOString() : null,
+      });
+
+      successes.push({
+        targetId: target.id,
+        targetLanguage: target.target_language,
+        subtitlePath,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : `Subtitle generation failed for ${target.target_language}.`;
+
+      await updateJobTargetStatus(db, {
+        targetId: target.id,
+        status: TARGET_STATE.FAILED,
+        errorMessage: message,
+        completedAt: null,
+      });
+
+      failures.push(`${target.target_language}: ${message}`);
+    }
+  }
+
+  const durationMs = Date.now() - startedAt;
+
+  if (successes.length === 0) {
+    const errorMessage = failures[0] ?? "Subtitle generation failed.";
+
+    await updateJobStatus(db, {
+      jobId: input.jobId,
+      status: JOB_STATE.FAILED,
+      errorMessage,
+      completedAt: null,
+    });
+
+    console.error("[jobs] step failed", {
+      job_id: input.jobId,
+      step: STEP_NAME,
+      duration_ms: durationMs,
+      error_message: errorMessage,
+    });
+
+    throw new Error(errorMessage);
+  }
+
+  const nextStatus =
+    failures.length > 0 ? JOB_STATE.PARTIAL_SUCCESS : getSuccessJobStatus(job);
+  const completedAt =
+    nextStatus === JOB_STATE.COMPLETED ? new Date().toISOString() : null;
+
+  await updateJobStatus(db, {
+    jobId: input.jobId,
+    status: nextStatus,
+    errorMessage: failures.length > 0 ? failures.join(" | ") : null,
+    completedAt,
+  });
+
+  console.info("[jobs] step completed", {
+    job_id: input.jobId,
+    step: STEP_NAME,
+    duration_ms: durationMs,
+    success_count: successes.length,
+    failure_count: failures.length,
+  });
+
+  return successes;
+}

@@ -1,5 +1,6 @@
 import { type DatabaseExecutor, queryMany } from "@/lib/db/client";
 import type {
+  SubtitleSegmentRow,
   TranslatedSegmentRow,
   TranslationSegmentResult,
 } from "@/types/transcript";
@@ -21,6 +22,26 @@ export async function listTranslatedSegmentsByJobTargetId(
      INNER JOIN transcript_segments
        ON transcript_segments.id = translated_segments.transcript_segment_id
      WHERE job_target_id = $1
+     ORDER BY transcript_segments.segment_index ASC`,
+    [jobTargetId],
+  );
+}
+
+export async function listSubtitleSegmentsByJobTargetId(
+  db: DatabaseExecutor,
+  jobTargetId: string,
+): Promise<SubtitleSegmentRow[]> {
+  return queryMany<SubtitleSegmentRow>(
+    db,
+    `SELECT translated_segments.transcript_segment_id,
+            transcript_segments.segment_index,
+            transcript_segments.source_start_ms,
+            transcript_segments.source_end_ms,
+            translated_segments.translated_text
+     FROM translated_segments
+     INNER JOIN transcript_segments
+       ON transcript_segments.id = translated_segments.transcript_segment_id
+     WHERE translated_segments.job_target_id = $1
      ORDER BY transcript_segments.segment_index ASC`,
     [jobTargetId],
   );

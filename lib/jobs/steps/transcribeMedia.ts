@@ -2,6 +2,7 @@ import {
   transcribeAudio,
   type TranscribeInput,
 } from "@/lib/ai/transcribe";
+import { JOB_STATE } from "@/lib/jobs/jobStates";
 import {
   runInTransactionIfAvailable,
   type DatabaseExecutor,
@@ -12,9 +13,6 @@ import type {
   TranscriptionResult,
   TranscriptionSegment,
 } from "@/types/transcript";
-
-const TRANSCRIPT_READY_STATUS = "transcript_ready";
-const FAILED_STATUS = "failed";
 
 export interface TranscribeMediaInput extends TranscribeInput {
   jobId: string;
@@ -77,7 +75,7 @@ export async function transcribeMedia(
 
       await updateJobStatus(transactionDb, {
         jobId: input.jobId,
-        status: TRANSCRIPT_READY_STATUS,
+        status: JOB_STATE.TRANSCRIPT_READY,
         errorMessage: null,
         completedAt: null,
       });
@@ -90,7 +88,7 @@ export async function transcribeMedia(
 
     await updateJobStatus(db, {
       jobId: input.jobId,
-      status: FAILED_STATUS,
+      status: JOB_STATE.FAILED,
       errorMessage,
       completedAt: null,
     });

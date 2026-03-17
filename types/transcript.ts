@@ -20,6 +20,14 @@ export interface TranslatedSegmentRow {
   updated_at: string;
 }
 
+export interface SubtitleSegmentRow {
+  transcript_segment_id: string;
+  segment_index: number;
+  source_start_ms: number;
+  source_end_ms: number;
+  translated_text: string;
+}
+
 export interface TranscriptionSegment {
   segmentIndex: number;
   startMs: number;
