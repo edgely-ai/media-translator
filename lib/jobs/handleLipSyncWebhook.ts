@@ -1,4 +1,5 @@
-import { JOB_STATE, TARGET_STATE } from "@/lib/jobs/jobStates";
+import { TARGET_STATE } from "@/lib/jobs/jobStates";
+import { reconcileJobOutputs } from "@/lib/jobs/reconcileJobOutputs";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import type { JobStatus, JobTargetRow } from "@/types/jobs";
 import type { LipSyncWebhookPayload } from "@/types/video";
@@ -110,41 +111,6 @@ function parseWebhookBody(body: unknown): LipSyncWebhookPayload {
   };
 }
 
-function reconcileJobStatus(targets: JobTargetWebhookRow[]): JobStatus {
-  const hasPendingTargets = targets.some(
-    (target) => target.status === TARGET_STATE.LIPSYNC_REQUESTED,
-  );
-
-  if (hasPendingTargets) {
-    return JOB_STATE.LIP_SYNC_PENDING;
-  }
-
-  const completedCount = targets.filter(
-    (target) => target.status === TARGET_STATE.COMPLETED,
-  ).length;
-  const failedCount = targets.filter(
-    (target) => target.status === TARGET_STATE.FAILED,
-  ).length;
-
-  if (completedCount === targets.length) {
-    return JOB_STATE.COMPLETED;
-  }
-
-  if (completedCount > 0) {
-    return JOB_STATE.PARTIAL_SUCCESS;
-  }
-
-  const hasFallbackOutputs = targets.some(
-    (target) => target.dubbed_audio_path || target.subtitle_path,
-  );
-
-  if (failedCount === targets.length && hasFallbackOutputs) {
-    return JOB_STATE.PARTIAL_SUCCESS;
-  }
-
-  return JOB_STATE.FAILED;
-}
-
 export async function handleLipSyncWebhook(
   request: Request,
   body: unknown,
@@ -196,46 +162,14 @@ export async function handleLipSyncWebhook(
     throw new LipSyncWebhookError(500, "Failed to update lip-sync target.");
   }
 
-  const { data: targets, error: targetsError } = await supabase
-    .from("job_targets")
-    .select(
-      "id, job_id, target_language, status, subtitle_path, dubbed_audio_path, dubbed_video_path, provider_job_id, error_message",
-    )
-    .eq("job_id", target.job_id)
-    .returns<JobTargetWebhookRow[]>();
-
-  if (targetsError || !targets) {
-    throw new LipSyncWebhookError(500, "Failed to reconcile job targets.");
-  }
-
-  const nextJobStatus = reconcileJobStatus(targets);
-
-  const { error: updateJobError } = await supabase
-    .from("jobs")
-    .update({
-      status: nextJobStatus,
-      error_message:
-        nextJobStatus === JOB_STATE.COMPLETED
-          ? null
-          : payload.status === TARGET_STATE.FAILED
-            ? payload.errorMessage ?? "Lip-sync rendering failed."
-            : null,
-      completed_at:
-        nextJobStatus === JOB_STATE.COMPLETED ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", target.job_id);
-
-  if (updateJobError) {
-    throw new LipSyncWebhookError(500, "Failed to update job status.");
-  }
+  const reconciliation = await reconcileJobOutputs(target.job_id);
 
   return {
     jobId: target.job_id,
     targetId: target.id,
     targetLanguage: target.target_language,
     targetStatus: nextTargetStatus,
-    jobStatus: nextJobStatus,
+    jobStatus: reconciliation.status,
   };
 }
 
