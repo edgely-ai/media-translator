@@ -434,6 +434,9 @@ Responsibilities:
 
 Status: [ ]
 
+Note:
+- T25 and T29 were completed ahead of this task; subtitle download wiring remains open.
+
 Update UI to show downloadable subtitle files per target language.
 
 ---
@@ -559,7 +562,7 @@ Responsibilities:
 
 ## T32. Implement worker job processor
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -578,7 +581,7 @@ Responsibilities:
 
 ## T33. Implement final output reconciliation
 
-Status: [ ]
+Status: [x]
 
 Create logic that determines whether a job ends in:
 
@@ -594,7 +597,7 @@ Based on target states and available outputs.
 
 ## T34. Implement Stripe checkout session route
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -611,7 +614,7 @@ Support:
 
 ## T35. Implement Stripe webhook
 
-Status: [ ]
+Status: [x]
 
 Create:
 
@@ -627,7 +630,7 @@ Responsibilities:
 
 ## T36. Show real billing status in UI
 
-Status: [ ]
+Status: [x]
 
 Update billing page and dashboard to reflect:
 

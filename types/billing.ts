@@ -32,3 +32,36 @@ export interface BillingEventRow {
   created_at: string;
   updated_at: string;
 }
+
+export const BILLING_TRIAL_STATUSES = [
+  "not_applicable",
+  "active",
+  "ended",
+] as const;
+
+export type BillingTrialStatus = (typeof BILLING_TRIAL_STATUSES)[number];
+
+export const BILLING_RENEWAL_STATES = [
+  "inactive",
+  "trialing",
+  "active",
+  "canceling",
+  "payment_due",
+  "paused",
+  "canceled",
+] as const;
+
+export type BillingRenewalState = (typeof BILLING_RENEWAL_STATES)[number];
+
+export interface BillingStatusResponse {
+  profileId: string;
+  stripeCustomerId: string | null;
+  currentPlanName: PlanName | null;
+  creditsRemaining: number;
+  trialStatus: BillingTrialStatus;
+  renewalState: BillingRenewalState;
+  subscriptionStatus: string | null;
+  cancelAtPeriodEnd: boolean;
+  creditResetAt: string | null;
+  trialEndsAt: string | null;
+}
