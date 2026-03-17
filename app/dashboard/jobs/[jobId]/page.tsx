@@ -1,6 +1,8 @@
 import Link from "next/link";
 
+import { JobProgressTimeline } from "@/components/job-progress-timeline";
 import { TranscriptEditorPanel } from "@/components/transcript-editor-panel";
+import type { JobStatus, OutputMode } from "@/types/jobs";
 
 type JobTargetOutput = {
   id: string;
@@ -16,9 +18,19 @@ type JobTargetOutput = {
 type JobDetailMock = {
   jobId: string;
   title: string;
-  outputMode: "dubbed_audio" | "lip_sync";
-  status: "completed" | "lip_sync_pending" | "partial_success";
+  outputMode: OutputMode;
+  status: JobStatus;
   sourceName: string;
+  sourceKind: "video" | "audio";
+  sourceDurationLabel: string;
+  sourceMediaPath: string;
+  normalizedMediaPath: string;
+  extractedAudioPath: string;
+  sourceLanguage: string;
+  estimatedCredits: number;
+  reservedCredits: number;
+  completedAt: string | null;
+  errorMessage: string | null;
   targets: JobTargetOutput[];
 };
 
@@ -29,6 +41,16 @@ function buildMockJobDetail(jobId: string): JobDetailMock {
     outputMode: "dubbed_audio",
     status: "completed",
     sourceName: "customer-interview.mp4",
+    sourceKind: "video",
+    sourceDurationLabel: "2 min 04 sec",
+    sourceMediaPath: `media/${jobId}/source.mp4`,
+    normalizedMediaPath: `media/${jobId}/source.mp4`,
+    extractedAudioPath: `media/${jobId}/audio.wav`,
+    sourceLanguage: "English",
+    estimatedCredits: 6,
+    reservedCredits: 6,
+    completedAt: "2026-03-17T12:45:00.000Z",
+    errorMessage: null,
     targets: [
       {
         id: "target-fr",
@@ -79,6 +101,19 @@ function getStatusTone(status: JobTargetOutput["status"]): string {
   }
 }
 
+function getJobStatusTone(status: JobStatus): string {
+  switch (status) {
+    case "completed":
+      return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    case "partial_success":
+      return "border-amber-200 bg-amber-50 text-amber-800";
+    case "failed":
+      return "border-red-200 bg-red-50 text-red-700";
+    default:
+      return "border-sky-200 bg-sky-50 text-sky-800";
+  }
+}
+
 export default async function JobDetailPage({
   params,
 }: {
@@ -111,6 +146,87 @@ export default async function JobDetailPage({
               Source: {job.sourceName}
             </span>
           </div>
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-[1fr_0.95fr_0.95fr]">
+          <article className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
+            <h2 className="text-xl font-semibold text-stone-950">Source media</h2>
+            <dl className="mt-5 grid gap-3 text-sm text-stone-600">
+              <div>
+                <dt className="font-medium text-stone-800">File</dt>
+                <dd>{job.sourceName}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-stone-800">Kind</dt>
+                <dd className="capitalize">{job.sourceKind}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-stone-800">Duration</dt>
+                <dd>{job.sourceDurationLabel}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-stone-800">Original path</dt>
+                <dd className="break-all">{job.sourceMediaPath}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-stone-800">Normalized path</dt>
+                <dd className="break-all">{job.normalizedMediaPath}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-stone-800">Extracted audio</dt>
+                <dd className="break-all">{job.extractedAudioPath}</dd>
+              </div>
+            </dl>
+          </article>
+
+          <article className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
+            <h2 className="text-xl font-semibold text-stone-950">Job status</h2>
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <span
+                className={`rounded-full border px-4 py-2 text-sm font-semibold ${getJobStatusTone(job.status)}`}
+              >
+                {job.status}
+              </span>
+              <span className="rounded-full bg-stone-100 px-4 py-2 text-sm text-stone-700">
+                Mode: {job.outputMode}
+              </span>
+            </div>
+            <dl className="mt-5 grid gap-3 text-sm text-stone-600">
+              <div>
+                <dt className="font-medium text-stone-800">Source language</dt>
+                <dd>{job.sourceLanguage}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-stone-800">Estimated credits</dt>
+                <dd>{job.estimatedCredits}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-stone-800">Reserved credits</dt>
+                <dd>{job.reservedCredits}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-stone-800">Completed at</dt>
+                <dd>{job.completedAt ?? "Still running"}</dd>
+              </div>
+              {job.errorMessage ? (
+                <div>
+                  <dt className="font-medium text-red-700">Latest job error</dt>
+                  <dd className="text-red-600">{job.errorMessage}</dd>
+                </div>
+              ) : null}
+            </dl>
+          </article>
+
+          <article className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
+            <h2 className="text-xl font-semibold text-stone-950">Progress timeline</h2>
+            <p className="mt-2 text-sm leading-7 text-stone-600">
+              This tracks the pipeline stage the job has reached, using the same
+              state-machine names the worker and webhook paths already use.
+            </p>
+            <div className="mt-6">
+              <JobProgressTimeline status={job.status} />
+            </div>
+          </article>
         </section>
 
         <TranscriptEditorPanel jobId={jobId} />

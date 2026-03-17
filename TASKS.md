@@ -143,7 +143,7 @@ Use mock data if backend is not yet wired.
 
 ## T6. Build job detail page shell
 
-Status: [ ]
+Status: [x]
 
 Build `/dashboard/jobs/[jobId]`.
 
