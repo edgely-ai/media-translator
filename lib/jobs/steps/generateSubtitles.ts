@@ -4,6 +4,12 @@ import { join } from "node:path";
 import { getJobById, updateJobStatus } from "@/lib/db/jobs";
 import { JOB_STATE, TARGET_STATE } from "@/lib/jobs/jobStates";
 import {
+  logJobStepCompleted,
+  logJobStepFailed,
+  logJobStepStarted,
+  logJobTargetEvent,
+} from "@/lib/jobs/stepLogging";
+import {
   listSubtitleSegmentsByJobTargetId,
 } from "@/lib/db/translatedSegments";
 import { listTargetsByJobId, updateJobTargetStatus } from "@/lib/db/targets";
@@ -115,8 +121,12 @@ export async function generateSubtitles(
     throw new Error(`Job ${input.jobId} has no targets for subtitle generation.`);
   }
 
-  console.info("[jobs] step started", {
-    job_id: input.jobId,
+  const eligibleTargets = targets.filter(
+    (target) => target.status !== TARGET_STATE.FAILED,
+  );
+
+  logJobStepStarted({
+    jobId: input.jobId,
     step: STEP_NAME,
     target_count: targets.length,
   });
@@ -131,7 +141,7 @@ export async function generateSubtitles(
   const successes: GeneratedSubtitleResult[] = [];
   const failures: string[] = [];
 
-  for (const target of targets) {
+  for (const target of eligibleTargets) {
     try {
       const segments = await listSubtitleSegmentsByJobTargetId(db, target.id);
 
@@ -175,6 +185,13 @@ export async function generateSubtitles(
         targetLanguage: target.target_language,
         subtitlePath: durableSubtitlePath,
       });
+      logJobTargetEvent("info", "[jobs] target subtitles ready", {
+        jobId: input.jobId,
+        step: STEP_NAME,
+        target_id: target.id,
+        target_language: target.target_language,
+        subtitle_path: durableSubtitlePath,
+      });
     } catch (error) {
       const message =
         error instanceof Error
@@ -189,10 +206,15 @@ export async function generateSubtitles(
       });
 
       failures.push(`${target.target_language}: ${message}`);
+      logJobTargetEvent("error", "[jobs] target subtitle generation failed", {
+        jobId: input.jobId,
+        step: STEP_NAME,
+        target_id: target.id,
+        target_language: target.target_language,
+        error_message: message,
+      });
     }
   }
-
-  const durationMs = Date.now() - startedAt;
 
   if (successes.length === 0) {
     const errorMessage = failures[0] ?? "Subtitle generation failed.";
@@ -204,11 +226,15 @@ export async function generateSubtitles(
       completedAt: null,
     });
 
-    console.error("[jobs] step failed", {
-      job_id: input.jobId,
+    logJobStepFailed({
+      jobId: input.jobId,
       step: STEP_NAME,
-      duration_ms: durationMs,
-      error_message: errorMessage,
+      startedAt,
+      error: new Error(errorMessage),
+      target_count: eligibleTargets.length,
+      skipped_failed_target_count: targets.length - eligibleTargets.length,
+      success_count: 0,
+      failure_count: failures.length,
     });
 
     throw new Error(errorMessage);
@@ -226,10 +252,12 @@ export async function generateSubtitles(
     completedAt,
   });
 
-  console.info("[jobs] step completed", {
-    job_id: input.jobId,
+  logJobStepCompleted({
+    jobId: input.jobId,
     step: STEP_NAME,
-    duration_ms: durationMs,
+    startedAt,
+    target_count: eligibleTargets.length,
+    skipped_failed_target_count: targets.length - eligibleTargets.length,
     success_count: successes.length,
     failure_count: failures.length,
   });

@@ -1,6 +1,13 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { JOB_STATE, TARGET_STATE } from "@/lib/jobs/jobStates";
+import {
+  logJobStepCompleted,
+  logJobStepFailed,
+  logJobStepStarted,
+} from "@/lib/jobs/stepLogging";
 import type { JobRow, JobTargetRow } from "@/types/jobs";
+
+const STEP_NAME = "reconcileJobOutputs";
 
 type ReconciliationTargetRow = Pick<
   JobTargetRow,
@@ -176,7 +183,13 @@ function deriveJobStatus(
 export async function reconcileJobOutputs(
   jobId: string,
 ): Promise<ReconcileJobOutputsResult> {
+  const startedAt = Date.now();
   const supabase = createSupabaseAdminClient();
+
+  logJobStepStarted({
+    jobId,
+    step: STEP_NAME,
+  });
 
   const { data: job, error: jobError } = await supabase
     .from("jobs")
@@ -185,11 +198,25 @@ export async function reconcileJobOutputs(
     .maybeSingle<ReconciliationJobRow>();
 
   if (jobError) {
-    throw new Error(`Failed to load job ${jobId} for reconciliation.`);
+    const error = new Error(`Failed to load job ${jobId} for reconciliation.`);
+    logJobStepFailed({
+      jobId,
+      step: STEP_NAME,
+      startedAt,
+      error,
+    });
+    throw error;
   }
 
   if (!job) {
-    throw new Error(`Job ${jobId} was not found for reconciliation.`);
+    const error = new Error(`Job ${jobId} was not found for reconciliation.`);
+    logJobStepFailed({
+      jobId,
+      step: STEP_NAME,
+      startedAt,
+      error,
+    });
+    throw error;
   }
 
   const { data: targets, error: targetsError } = await supabase
@@ -202,18 +229,40 @@ export async function reconcileJobOutputs(
     .returns<ReconciliationTargetRow[]>();
 
   if (targetsError || !targets) {
-    throw new Error(`Failed to load targets for job ${jobId} reconciliation.`);
+    const error = new Error(
+      `Failed to load targets for job ${jobId} reconciliation.`,
+    );
+    logJobStepFailed({
+      jobId,
+      step: STEP_NAME,
+      startedAt,
+      error,
+    });
+    throw error;
   }
 
   const derived = deriveJobStatus(job, targets);
 
   if (!derived.isTerminal) {
-    return {
+    const result = {
       jobId,
       ...derived,
       finalizedCredits: 0,
       releasedCredits: 0,
     };
+
+    logJobStepCompleted({
+      jobId,
+      step: STEP_NAME,
+      startedAt,
+      status: result.status,
+      is_terminal: false,
+      success_count: result.successfulTargetIds.length,
+      failure_count: result.failedTargetIds.length,
+      pending_count: result.pendingTargetIds.length,
+    });
+
+    return result;
   }
 
   const { data: creditEntries, error: creditError } = await supabase
@@ -223,7 +272,14 @@ export async function reconcileJobOutputs(
     .returns<CreditLedgerEntryRow[]>();
 
   if (creditError || !creditEntries) {
-    throw new Error(`Failed to load credit ledger for job ${jobId}.`);
+    const error = new Error(`Failed to load credit ledger for job ${jobId}.`);
+    logJobStepFailed({
+      jobId,
+      step: STEP_NAME,
+      startedAt,
+      error,
+    });
+    throw error;
   }
 
   const creditSummary = summarizeCredits(creditEntries);
@@ -271,7 +327,14 @@ export async function reconcileJobOutputs(
     });
 
     if (finalizeError) {
-      throw new Error(`Failed to finalize credits for job ${jobId}.`);
+      const error = new Error(`Failed to finalize credits for job ${jobId}.`);
+      logJobStepFailed({
+        jobId,
+        step: STEP_NAME,
+        startedAt,
+        error,
+      });
+      throw error;
     }
   }
 
@@ -285,7 +348,14 @@ export async function reconcileJobOutputs(
     });
 
     if (releaseError) {
-      throw new Error(`Failed to release credits for job ${jobId}.`);
+      const error = new Error(`Failed to release credits for job ${jobId}.`);
+      logJobStepFailed({
+        jobId,
+        step: STEP_NAME,
+        startedAt,
+        error,
+      });
+      throw error;
     }
   }
 
@@ -308,13 +378,35 @@ export async function reconcileJobOutputs(
     .eq("id", jobId);
 
   if (updateJobError) {
-    throw new Error(`Failed to persist reconciled status for job ${jobId}.`);
+    const error = new Error(`Failed to persist reconciled status for job ${jobId}.`);
+    logJobStepFailed({
+      jobId,
+      step: STEP_NAME,
+      startedAt,
+      error,
+    });
+    throw error;
   }
 
-  return {
+  const result = {
     jobId,
     ...derived,
     finalizedCredits,
     releasedCredits,
   };
+
+  logJobStepCompleted({
+    jobId,
+    step: STEP_NAME,
+    startedAt,
+    status: result.status,
+    is_terminal: true,
+    success_count: result.successfulTargetIds.length,
+    failure_count: result.failedTargetIds.length,
+    pending_count: result.pendingTargetIds.length,
+    finalized_credits: result.finalizedCredits,
+    released_credits: result.releasedCredits,
+  });
+
+  return result;
 }

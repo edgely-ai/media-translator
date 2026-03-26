@@ -4,6 +4,11 @@ import { extractAudio } from "@/lib/ffmpeg/extractAudio";
 import { normalizeMedia, type NormalizedMediaKind } from "@/lib/ffmpeg/normalizeMedia";
 import { JOB_STATE, canTransitionJobState } from "@/lib/jobs/jobStates";
 import { reconcileJobOutputs } from "@/lib/jobs/reconcileJobOutputs";
+import {
+  logJobStepCompleted,
+  logJobStepFailed,
+  logJobStepStarted,
+} from "@/lib/jobs/stepLogging";
 import { generateDubbedAudio } from "@/lib/jobs/steps/generateDubbedAudio";
 import { generateSubtitles } from "@/lib/jobs/steps/generateSubtitles";
 import { requestLipSync } from "@/lib/jobs/steps/requestLipSync";
@@ -73,19 +78,6 @@ async function transitionJobStatus(
   });
 }
 
-function logProcessCompletion(
-  jobId: string,
-  startedAt: number,
-  finalStatus: JobRow["status"],
-): void {
-  console.info("[jobs] step completed", {
-    job_id: jobId,
-    step: STEP_NAME,
-    duration_ms: Date.now() - startedAt,
-    final_status: finalStatus,
-  });
-}
-
 export async function processJob(
   db: DatabaseExecutor,
   input: ProcessJobInput,
@@ -103,8 +95,8 @@ export async function processJob(
     );
   }
 
-  console.info("[jobs] step started", {
-    job_id: input.jobId,
+  logJobStepStarted({
+    jobId: input.jobId,
     step: STEP_NAME,
     output_mode: job.output_mode,
   });
@@ -210,7 +202,12 @@ export async function processJob(
     if (job.output_mode === "subtitles") {
       await reconcileJobOutputs(job.id);
       const finalJob = await reloadJob(db, job.id);
-      logProcessCompletion(input.jobId, startedAt, finalJob.status);
+      logJobStepCompleted({
+        jobId: input.jobId,
+        step: STEP_NAME,
+        startedAt,
+        final_status: finalJob.status,
+      });
       return finalJob;
     }
 
@@ -224,7 +221,12 @@ export async function processJob(
     if (job.output_mode === "dubbed_audio") {
       await reconcileJobOutputs(job.id);
       const finalJob = await reloadJob(db, job.id);
-      logProcessCompletion(input.jobId, startedAt, finalJob.status);
+      logJobStepCompleted({
+        jobId: input.jobId,
+        step: STEP_NAME,
+        startedAt,
+        final_status: finalJob.status,
+      });
       return finalJob;
     }
 
@@ -234,7 +236,12 @@ export async function processJob(
     });
 
     job = await reloadJob(db, job.id);
-    logProcessCompletion(input.jobId, startedAt, job.status);
+    logJobStepCompleted({
+      jobId: input.jobId,
+      step: STEP_NAME,
+      startedAt,
+      final_status: job.status,
+    });
 
     return job;
   } catch (error) {
@@ -258,11 +265,11 @@ export async function processJob(
       await reconcileJobOutputs(failedJob.id);
     }
 
-    console.error("[jobs] step failed", {
-      job_id: input.jobId,
+    logJobStepFailed({
+      jobId: input.jobId,
       step: STEP_NAME,
-      duration_ms: Date.now() - startedAt,
-      error_message: errorMessage,
+      startedAt,
+      error,
     });
 
     throw error;

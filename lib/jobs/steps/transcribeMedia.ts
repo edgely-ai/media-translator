@@ -9,10 +9,17 @@ import {
 } from "@/lib/db/client";
 import { replaceTranscriptSegmentsForJob } from "@/lib/db/transcript";
 import { updateJobMediaPaths, updateJobStatus } from "@/lib/db/jobs";
+import {
+  logJobStepCompleted,
+  logJobStepFailed,
+  logJobStepStarted,
+} from "@/lib/jobs/stepLogging";
 import type {
   TranscriptionResult,
   TranscriptionSegment,
 } from "@/types/transcript";
+
+const STEP_NAME = "transcribeMedia";
 
 export interface TranscribeMediaInput extends TranscribeInput {
   jobId: string;
@@ -53,6 +60,15 @@ export async function transcribeMedia(
   db: DatabaseExecutor,
   input: TranscribeMediaInput,
 ): Promise<TranscriptionResult> {
+  const startedAt = Date.now();
+
+  logJobStepStarted({
+    jobId: input.jobId,
+    step: STEP_NAME,
+    audio_path: input.audioPath,
+    language_hint: input.languageHint ?? null,
+  });
+
   try {
     const result = await transcribeAudio({
       audioPath: input.audioPath,
@@ -81,6 +97,15 @@ export async function transcribeMedia(
       });
     });
 
+    logJobStepCompleted({
+      jobId: input.jobId,
+      step: STEP_NAME,
+      startedAt,
+      provider_response_id: result.providerResponseId,
+      detected_language: result.detectedLanguage,
+      segment_count: result.segments.length,
+    });
+
     return result;
   } catch (error) {
     const errorMessage =
@@ -91,6 +116,14 @@ export async function transcribeMedia(
       status: JOB_STATE.FAILED,
       errorMessage,
       completedAt: null,
+    });
+
+    logJobStepFailed({
+      jobId: input.jobId,
+      step: STEP_NAME,
+      startedAt,
+      error,
+      audio_path: input.audioPath,
     });
 
     throw error;

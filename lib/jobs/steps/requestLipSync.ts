@@ -2,6 +2,11 @@ import { requestLipSync as requestLipSyncFromProvider } from "@/lib/ai/lipsync";
 import type { DatabaseExecutor } from "@/lib/db/client";
 import { getJobById, updateJobStatus } from "@/lib/db/jobs";
 import { JOB_STATE, TARGET_STATE } from "@/lib/jobs/jobStates";
+import {
+  logJobStepCompleted,
+  logJobStepStarted,
+  logJobTargetEvent,
+} from "@/lib/jobs/stepLogging";
 import { listTargetsByJobId, updateJobTargetStatus } from "@/lib/db/targets";
 import type { JobRow } from "@/types/jobs";
 import type { LipSyncRequestResult } from "@/types/video";
@@ -43,8 +48,12 @@ export async function requestLipSync(
     throw new Error(`Job ${input.jobId} has no targets for lip-sync requests.`);
   }
 
-  console.info("[jobs] step started", {
-    job_id: input.jobId,
+  const eligibleTargets = targets.filter(
+    (target) => target.status !== TARGET_STATE.FAILED,
+  );
+
+  logJobStepStarted({
+    jobId: input.jobId,
     step: STEP_NAME,
     target_count: targets.length,
   });
@@ -52,7 +61,7 @@ export async function requestLipSync(
   const successes: LipSyncRequestResult[] = [];
   const failures: string[] = [];
 
-  for (const target of targets) {
+  for (const target of eligibleTargets) {
     try {
       if (!target.dubbed_audio_path) {
         throw new Error(
@@ -76,6 +85,13 @@ export async function requestLipSync(
       });
 
       successes.push(result);
+      logJobTargetEvent("info", "[jobs] target lip-sync requested", {
+        jobId: input.jobId,
+        step: STEP_NAME,
+        target_id: target.id,
+        target_language: target.target_language,
+        provider_job_id: result.providerJobId,
+      });
     } catch (error) {
       const message =
         error instanceof Error
@@ -90,10 +106,15 @@ export async function requestLipSync(
       });
 
       failures.push(`${target.target_language}: ${message}`);
+      logJobTargetEvent("error", "[jobs] target lip-sync request failed", {
+        jobId: input.jobId,
+        step: STEP_NAME,
+        target_id: target.id,
+        target_language: target.target_language,
+        error_message: message,
+      });
     }
   }
-
-  const durationMs = Date.now() - startedAt;
 
   if (successes.length === 0) {
     const errorMessage =
@@ -106,14 +127,19 @@ export async function requestLipSync(
       completedAt: null,
     });
 
-    console.error("[jobs] step completed with no requests", {
-      job_id: input.jobId,
+    logJobStepCompleted({
+      jobId: input.jobId,
       step: STEP_NAME,
-      duration_ms: durationMs,
+      startedAt,
+      target_count: eligibleTargets.length,
+      skipped_failed_target_count: targets.length - eligibleTargets.length,
+      success_count: 0,
+      failure_count: failures.length,
+      outcome: JOB_STATE.PARTIAL_SUCCESS,
       error_message: errorMessage,
     });
 
-    throw new Error(errorMessage);
+    return [];
   }
 
   const nextStatus =
@@ -126,10 +152,12 @@ export async function requestLipSync(
     completedAt: null,
   });
 
-  console.info("[jobs] step completed", {
-    job_id: input.jobId,
+  logJobStepCompleted({
+    jobId: input.jobId,
     step: STEP_NAME,
-    duration_ms: durationMs,
+    startedAt,
+    target_count: eligibleTargets.length,
+    skipped_failed_target_count: targets.length - eligibleTargets.length,
     success_count: successes.length,
     failure_count: failures.length,
   });

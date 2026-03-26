@@ -6,6 +6,12 @@ import type { DatabaseExecutor } from "@/lib/db/client";
 import { getJobById, updateJobStatus } from "@/lib/db/jobs";
 import { listSubtitleSegmentsByJobTargetId } from "@/lib/db/translatedSegments";
 import { JOB_STATE, TARGET_STATE } from "@/lib/jobs/jobStates";
+import {
+  logJobStepCompleted,
+  logJobStepFailed,
+  logJobStepStarted,
+  logJobTargetEvent,
+} from "@/lib/jobs/stepLogging";
 import { listTargetsByJobId, updateJobTargetStatus } from "@/lib/db/targets";
 import {
   buildDubbedAudioStoragePath,
@@ -115,8 +121,12 @@ export async function generateDubbedAudio(
     throw new Error(`Job ${input.jobId} has no targets for dubbed audio generation.`);
   }
 
-  console.info("[jobs] step started", {
-    job_id: input.jobId,
+  const eligibleTargets = targets.filter(
+    (target) => target.status !== TARGET_STATE.FAILED,
+  );
+
+  logJobStepStarted({
+    jobId: input.jobId,
     step: STEP_NAME,
     target_count: targets.length,
   });
@@ -134,7 +144,7 @@ export async function generateDubbedAudio(
   const successes: GeneratedDubbedAudioResult[] = [];
   const failures: string[] = [];
 
-  for (const target of targets) {
+  for (const target of eligibleTargets) {
     try {
       const segments = await listSubtitleSegmentsByJobTargetId(db, target.id);
 
@@ -189,6 +199,15 @@ export async function generateDubbedAudio(
         format: synthesizedAudio.format,
         mimeType: synthesizedAudio.mimeType,
       });
+      logJobTargetEvent("info", "[jobs] target dubbed audio ready", {
+        jobId: input.jobId,
+        step: STEP_NAME,
+        target_id: target.id,
+        target_language: target.target_language,
+        dubbed_audio_path: durableDubbedAudioPath,
+        provider_response_id: synthesizedAudio.providerResponseId,
+        format: synthesizedAudio.format,
+      });
     } catch (error) {
       const message =
         error instanceof Error
@@ -203,29 +222,58 @@ export async function generateDubbedAudio(
       });
 
       failures.push(`${target.target_language}: ${message}`);
+      logJobTargetEvent("error", "[jobs] target dubbed audio failed", {
+        jobId: input.jobId,
+        step: STEP_NAME,
+        target_id: target.id,
+        target_language: target.target_language,
+        error_message: message,
+      });
     }
   }
 
-  const durationMs = Date.now() - startedAt;
-
   if (successes.length === 0) {
     const errorMessage = failures[0] ?? "Dubbed audio generation failed.";
+    const nextStatus =
+      job.output_mode === "dubbed_audio"
+        ? JOB_STATE.FAILED
+        : JOB_STATE.PARTIAL_SUCCESS;
 
     await updateJobStatus(db, {
       jobId: input.jobId,
-      status: JOB_STATE.FAILED,
+      status: nextStatus,
       errorMessage,
       completedAt: null,
     });
 
-    console.error("[jobs] step failed", {
-      job_id: input.jobId,
+    if (nextStatus === JOB_STATE.FAILED) {
+      logJobStepFailed({
+        jobId: input.jobId,
+        step: STEP_NAME,
+        startedAt,
+        error: new Error(errorMessage),
+        target_count: eligibleTargets.length,
+        skipped_failed_target_count: targets.length - eligibleTargets.length,
+        success_count: 0,
+        failure_count: failures.length,
+      });
+
+      throw new Error(errorMessage);
+    }
+
+    logJobStepCompleted({
+      jobId: input.jobId,
       step: STEP_NAME,
-      duration_ms: durationMs,
+      startedAt,
+      target_count: eligibleTargets.length,
+      skipped_failed_target_count: targets.length - eligibleTargets.length,
+      success_count: 0,
+      failure_count: failures.length,
+      outcome: JOB_STATE.PARTIAL_SUCCESS,
       error_message: errorMessage,
     });
 
-    throw new Error(errorMessage);
+    return [];
   }
 
   const nextStatus =
@@ -240,10 +288,12 @@ export async function generateDubbedAudio(
     completedAt,
   });
 
-  console.info("[jobs] step completed", {
-    job_id: input.jobId,
+  logJobStepCompleted({
+    jobId: input.jobId,
     step: STEP_NAME,
-    duration_ms: durationMs,
+    startedAt,
+    target_count: eligibleTargets.length,
+    skipped_failed_target_count: targets.length - eligibleTargets.length,
     success_count: successes.length,
     failure_count: failures.length,
   });
