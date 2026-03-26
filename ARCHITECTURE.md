@@ -14,8 +14,9 @@ three output modes per job:
 
 The repository currently contains the application shell, API routes, database
 schema, billing flows, transcript editing, processing-step implementations, and
-a worker handler entry point. It does not yet contain a complete production
-worker runtime or concrete non-mock AI provider integrations.
+a worker runtime, worker handler entry point, source-media staging, and durable
+artifact upload-back to Supabase Storage. It does not yet contain concrete
+non-mock AI provider integrations or committed worker deployment packaging.
 
 Assumption:
 
@@ -82,9 +83,9 @@ Thin Next.js route handlers in `app/api/*` validate JSON/auth and delegate to
 
 - Supabase Postgres for relational state
 - Supabase Storage for uploaded source media
+- Supabase Storage for durable generated artifacts
 - Stripe for billing/subscription state
-- Local filesystem writes for generated subtitle/audio artifacts in the current
-  processing implementation
+- Worker-local filesystem staging for temporary processing artifacts
 
 ## External Services
 
@@ -116,10 +117,13 @@ Thin Next.js route handlers in `app/api/*` validate JSON/auth and delegate to
 
 ### Processing
 
-1. A future worker/runtime would move a job from `created` to `queued`.
-2. `processJob()` runs normalize -> extract audio -> transcribe -> translate ->
+1. The worker runtime polls jobs, moves claimable work from `created` to
+   `queued`, and executes `processJob()`.
+2. `processJob()` stages source media locally, then runs normalize -> extract
+   audio -> transcribe -> translate ->
    subtitles -> dubbed audio -> lip-sync request.
-3. Each step updates job and target rows.
+3. Processing uploads durable generated artifacts back to Supabase Storage and
+   updates job/target rows with storage object paths.
 4. Final status and credit release/finalization are derived by
    `reconcileJobOutputs()`.
 5. Lip-sync completion is expected to arrive later via webhook.
@@ -146,17 +150,16 @@ Thin Next.js route handlers in `app/api/*` validate JSON/auth and delegate to
 Confirmed facts:
 
 - The generic SQL helpers in `lib/db/*` are designed for a database executor,
-  but this repository does not include a concrete executor implementation wired
-  into a running worker.
-- Processing steps currently write generated outputs to the local filesystem,
-  not back into Supabase Storage.
+  and the worker now includes a concrete Postgres-backed executor.
+- Processing uses worker-local files as temporary working artifacts, but durable
+  outputs are uploaded back into Supabase Storage.
 - The job detail page is still mostly mock UI even though transcript editing is
   live.
 
 ## Code/Doc Inconsistencies Flagged
 
 - The previous `PIPELINE.md` did not describe the actual pipeline at all.
-- Existing docs implied a concrete worker architecture; the repo currently has a
-  worker handler module but no queue consumer or deployed worker service.
+- Existing docs implied no queue consumer/runtime, but the repo now has a
+  worker poller plus worker entrypoint.
 - Existing docs implied more complete live job detail views than the current UI
   actually provides.

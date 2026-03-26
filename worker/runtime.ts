@@ -121,9 +121,9 @@ export async function runWorkerRuntime(
     output_root_dir: options.outputRootDir ?? "media",
     run_once: options.runOnce ?? false,
     limitations: [
-      "source media local access is still unresolved",
-      "durable output persistence is still unresolved",
       "provider integrations are still mostly mock or not configured",
+      "lip-sync output durability is still unresolved",
+      "worker deployment packaging is still unresolved",
     ],
   });
 

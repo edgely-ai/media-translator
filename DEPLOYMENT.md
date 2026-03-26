@@ -6,7 +6,8 @@ Confirmed facts:
 
 - The repo contains a Next.js app, Supabase integrations, Stripe integrations,
   and processing modules that require FFmpeg.
-- The repo does not contain committed worker deployment config.
+- The repo now contains a worker entrypoint and runtime, but still does not
+  contain committed worker deployment config.
 
 Assumption:
 
@@ -79,9 +80,7 @@ If processing is executed from this codebase, the runtime must also provide:
 - `ffmpeg` on `PATH`
 - writable local disk for `media/{jobId}/...`
 - access to the source media path as a real local file
-
-That last assumption is not currently satisfied by the upload/job creation path,
-which stores Supabase Storage object paths rather than downloaded local files.
+- access to the Supabase-backed source object and credentials to stage it locally
 
 ## Worker / Function Topology
 
@@ -90,20 +89,20 @@ Implemented:
 - Next.js API routes
 - library-based job processor
 - worker handler wrapper in `worker/handlers/process-media-job.ts`
+- worker runtime / poller
+- worker process entrypoint in `worker/main.ts`
 
 Missing:
 
 - background queue
-- worker process entrypoint
-- scheduler / poller
 - deployment instructions for a worker service
 
 ## Production Risks
 
-- Processing cannot run correctly in production until source files are made
-  available locally or streamed/downloaded before FFmpeg executes.
-- Generated outputs are local files only; they are not persisted to durable
-  object storage.
+- The worker now stages source files locally before FFmpeg executes, but this
+  still depends on local disk availability and correct service-role access.
+- Durable persistence now exists for normalized media, extracted audio,
+  subtitles, and dubbed audio, but lip-sync output durability is still a gap.
 - Provider layers default to `not configured` unless explicitly set to `mock`.
 - Service-role Supabase access is widely used; route boundaries matter.
 - Billing and lip-sync webhooks require externally configured secrets.
@@ -115,5 +114,6 @@ Recommended next operational work, not currently implemented:
 - Treat current processing code as library/runtime logic, not a complete
   production deployment.
 - Add a real worker service before enabling automatic job processing.
-- Add durable output storage before relying on generated artifacts.
+- Add deployment packaging/instructions for the worker service.
+- Add durable persistence for lip-sync outputs.
 - Add structured logging before debugging production pipeline failures.

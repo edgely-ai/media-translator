@@ -71,9 +71,14 @@ Confirmed facts:
 - Stripe webhook storage and credit grant logic
 - Transcript fetch/edit API and transcript editor UI
 - FFmpeg normalization and audio extraction utilities
+- Worker runtime / poller plus worker entrypoint scripts
+- Concrete worker-side Postgres executor wired through `withPostgresClient()`
+- Source-media staging from Supabase Storage to worker-local disk before FFmpeg
 - Provider abstraction layers for STT, translation, TTS, and lip-sync
 - Job step implementations for transcription, translation, subtitles, dubbed
   audio, and lip-sync request
+- Durable upload-back of normalized media, extracted audio, subtitles, and
+  dubbed audio to Supabase Storage
 - Final reconciliation logic for terminal job status and credit release/finalize
 - Lip-sync webhook handler
 
@@ -81,15 +86,14 @@ Confirmed facts:
 
 Confirmed facts:
 
-- No production worker runtime or queue consumer
-- No concrete DB executor wired into the worker path
 - No real AI provider integrations beyond `mock`/`not configured`
-- No download/storage sync of generated artifacts back to Supabase Storage
 - Dashboard recent jobs and job detail metadata are still mock data
 - No cancellation flow
 - No retry orchestration beyond manual reruns
 - No deployment configuration files in repo
 - No admin/dev scripts beyond `scripts/reliability-matrix.md`
+- Durable persistence for lip-sync output is still not implemented in the
+  current code
 
 ## Key Constraints
 
@@ -108,18 +112,18 @@ This section is a recommendation based on repository state, not an existing
 tracked priority list in code:
 
 - Replace stale docs with implementation-accurate docs
-- Wire a real worker/runtime around `processJob`
-- Resolve storage-path vs local-file-path assumptions in processing
 - Replace mock UI sections with live job queries
 - Add real provider integrations and operational logging
+- Add durable persistence for lip-sync outputs
+- Add deployment packaging/instructions for the worker service
 
 ## Major Implementation Reality Checks
 
 Confirmed facts:
 
 - The app can create jobs, but it does not currently auto-process them.
-- The processing modules assume direct filesystem access to media paths.
-- The upload path stored in jobs is a Supabase Storage path, not a downloaded
-  local file path.
+- The worker now stages source media locally before FFmpeg runs.
+- The worker now uploads generated artifacts back to Supabase Storage for
+  durable persistence.
 - The codebase is part prototype, part application shell, and part pipeline
   library.

@@ -2,22 +2,15 @@
 
 ## Confirmed High-Impact Gaps
 
-- No actual worker runtime
-  `processJob()` and `worker/handlers/process-media-job.ts` exist, but nothing
-  in the repo queues or executes jobs in the background.
-
-- Storage-path vs filesystem-path mismatch
-  Job creation stores Supabase Storage paths such as
-  `uploads/{userId}/{uploadId}/source.ext`, while FFmpeg processing expects a
-  directly readable local path.
-
-- Generated outputs are not persisted durably
-  Subtitle and dubbed-audio steps write local files. There is no upload-back to
-  Supabase Storage.
-
 - Provider integrations are mostly placeholders
   STT, translation, TTS, and lip-sync layers only support `mock` or
   `not configured` behavior.
+
+- Lip-sync output is not yet durably persisted back to Supabase Storage
+
+- Worker deployment is still repo-local
+  The repo now has a worker runtime and entrypoint, but no committed production
+  deployment packaging or service definition.
 
 ## Confirmed UI Gaps
 
@@ -47,8 +40,6 @@
 
 ## Architecture Ambiguities
 
-- `lib/db/*` expects a generic SQL executor, but no concrete executor
-  implementation is present in the repo for worker usage.
 - Existing docs historically described a fuller production architecture than the
   current code actually implements.
 - `SYSTEM_DIAGRAM.md` may be useful as reference, but the code should be treated
@@ -67,32 +58,26 @@
 
 - Replace mock UI sections with live queries
 - Add concrete provider adapters behind existing interfaces
-- Add worker bootstrapping / queue integration
 - Add structured logging
-- Add durable artifact storage
+- Add durable lip-sync artifact storage
 
 ## Top 5 Architectural Risks
 
 1. Source-media path handling is inconsistent across upload and processing paths,
-   so the pipeline cannot reliably run end-to-end in production.
-2. There is no queue-backed worker runtime, so jobs can be created but not
-   automatically processed.
-3. Generated outputs are written only to local disk, creating durability and
-   multi-instance execution risk.
-4. Partial-success behavior is not implemented consistently across all stages,
+   but now depends on worker-side local staging and cleanup behaving correctly.
+2. Lip-sync durable artifact persistence is still incomplete, leaving the output
+   model inconsistent across artifact types.
+3. Partial-success behavior is not implemented consistently across all stages,
    especially translation failure handling.
-5. The worker-oriented DB abstraction is incomplete in this repo because no
-   concrete `DatabaseExecutor` implementation is provided.
+4. Provider integrations are still mostly mock or not configured.
+5. Worker deployment/operations are still under-specified for production use.
 
 ## Top 5 Next Implementation Priorities
 
-1. Add a real worker runtime and queue mechanism that can move jobs from
-   `created` to `queued` to `processJob()`.
-2. Resolve media access by downloading or mounting source files before FFmpeg
-   steps run.
-3. Persist generated subtitles, dubbed audio, and lip-sync outputs to durable
-   storage and store those durable paths.
-4. Replace mock dashboard/job-detail job data with live reads from jobs and
+1. Persist lip-sync outputs durably and store those durable paths.
+2. Improve partial-success correctness across target-level failures.
+3. Replace mock dashboard/job-detail job data with live reads from jobs and
    job_targets.
+4. Add worker deployment packaging/instructions for a production runtime.
 5. Add at least one real provider integration behind the existing mock provider
    interfaces, plus structured logging around step execution.
