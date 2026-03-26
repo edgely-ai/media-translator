@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BillingStatusPanel } from "@/components/billing-status-panel";
 import { DashboardRecentJobsPanel } from "@/components/dashboard-recent-jobs-panel";
+import { UploadJobCard } from "@/components/upload-job-card";
 
 export default function DashboardPage() {
   return (
@@ -21,34 +22,6 @@ export default function DashboardPage() {
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <article className="rounded-4xl border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-stone-500">
-              Upload
-            </p>
-            <h2 className="mt-4 text-2xl font-semibold tracking-tight text-stone-950">
-              Start a new translation job
-            </h2>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-stone-600">
-              Upload source media, choose an output mode, and send a new job into
-              the processing pipeline. This card keeps the dashboard aligned with
-              the real upload flow already wired on the app home.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link
-                href="/"
-                className="rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-800"
-              >
-                Open upload flow
-              </Link>
-              <Link
-                href="/dashboard/billing"
-                className="rounded-full border border-stone-300 px-5 py-3 text-sm font-semibold text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
-              >
-                Review billing
-              </Link>
-            </div>
-          </article>
-
           <article className="rounded-4xl border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-stone-500">
               Credits summary
@@ -72,9 +45,22 @@ export default function DashboardPage() {
                 This card intentionally stays lightweight and points to the live
                 billing summary instead of duplicating a second fetch layer.
               </p>
+              <div className="mt-4">
+                <Link
+                  href="/dashboard/billing"
+                  className="rounded-full border border-stone-300 px-5 py-3 text-sm font-semibold text-stone-700 transition hover:border-stone-950 hover:text-stone-950"
+                >
+                  Review billing
+                </Link>
+              </div>
             </div>
           </article>
         </section>
+
+        <UploadJobCard
+          title="Start a new translation job"
+          description="Choose media, one output mode, and target languages directly inside the dashboard. The flow still uses the existing upload-init and job-creation routes, then refreshes the dashboard so the new job appears naturally in recent jobs below."
+        />
 
         <BillingStatusPanel variant="compact" />
         <DashboardRecentJobsPanel />
