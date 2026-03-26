@@ -126,7 +126,7 @@ Keep visuals professional and simple.
 
 ## T5. Build dashboard shell
 
-Status: [ ]
+Status: [x]
 
 Build `/dashboard`.
 
@@ -161,7 +161,7 @@ Use mock data if needed.
 
 ## T7. Build billing page shell
 
-Status: [ ]
+Status: [x]
 
 Build `/dashboard/billing`.
 
@@ -171,6 +171,9 @@ Include:
 - credits remaining
 - next reset date
 - upgrade/manage billing CTA
+
+Note:
+- Implemented with a live billing panel rather than a mock shell.
 
 ---
 
@@ -235,7 +238,7 @@ Must follow credit rules from project docs.
 
 ## T10. Wire dashboard upload flow
 
-Status: [x]
+Status: [~]
 
 Connect the dashboard upload UI to:
 
@@ -250,6 +253,10 @@ Use a simple flow:
 4. create job
 
 No worker processing yet.
+
+Note:
+- The upload and job-creation flow is wired on `app/page.tsx`.
+- `/dashboard` currently links to that flow instead of hosting it directly.
 
 ---
 
@@ -645,7 +652,7 @@ Update billing page and dashboard to reflect:
 
 ## T37. Improve progress timeline UI
 
-Status: [ ]
+Status: [~]
 
 Update job detail page to show:
 
@@ -653,6 +660,10 @@ Update job detail page to show:
 - completed steps
 - failure states
 - partial success messaging
+
+Note:
+- A timeline component is implemented and shows current, completed, and terminal states.
+- The job detail page still uses mock job data, so this is only partially complete.
 
 ---
 
