@@ -1,5 +1,4 @@
 import Link from "next/link";
-
 import { BillingStatusPanel } from "@/components/billing-status-panel";
 
 type DashboardRecentJob = {
@@ -57,7 +56,7 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f5f1e8_0%,#f7fafc_48%,#eef7f0_100%)] px-6 py-10 text-stone-900">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
-        <section className="rounded-[2rem] border border-stone-200/70 bg-white/90 p-8 shadow-[0_24px_80px_rgba(66,50,20,0.08)] backdrop-blur">
+        <section className="rounded-4xl border border-stone-200/70 bg-white/90 p-8 shadow-[0_24px_80px_rgba(66,50,20,0.08)] backdrop-blur">
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-stone-500">
             Dashboard
           </p>
@@ -72,7 +71,7 @@ export default function DashboardPage() {
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <article className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
+          <article className="rounded-4xl border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-stone-500">
               Upload
             </p>
@@ -100,7 +99,7 @@ export default function DashboardPage() {
             </div>
           </article>
 
-          <article className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
+          <article className="rounded-4xl border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-stone-500">
               Credits summary
             </p>
@@ -112,7 +111,7 @@ export default function DashboardPage() {
               dashboard its own credits-summary card so the page matches the
               original authenticated-app layout described in the backlog.
             </p>
-            <div className="mt-6 rounded-[1.5rem] bg-stone-50 p-5">
+            <div className="mt-6 rounded-3xl bg-stone-50 p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
                 Current status
               </p>
@@ -129,7 +128,7 @@ export default function DashboardPage() {
 
         <BillingStatusPanel variant="compact" />
 
-        <section className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
+        <section className="rounded-4xl border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.24em] text-stone-500">
@@ -158,7 +157,7 @@ export default function DashboardPage() {
               {RECENT_JOBS.map((job) => (
                 <article
                   key={job.id}
-                  className="rounded-[1.5rem] border border-stone-200 bg-stone-50/80 p-5"
+                  className="rounded-3xl border border-stone-200 bg-stone-50/80 p-5"
                 >
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div className="space-y-3">
@@ -196,7 +195,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <div className="mt-8 rounded-[1.5rem] border border-dashed border-stone-300 bg-stone-50 p-6 text-sm text-stone-600">
+            <div className="mt-8 rounded-3xl border border-dashed border-stone-300 bg-stone-50 p-6 text-sm text-stone-600">
               No jobs have been created yet. Start with the upload card above and
               your first translation run will appear here.
             </div>
