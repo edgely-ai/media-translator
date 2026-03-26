@@ -9,6 +9,11 @@ import { generateSubtitles } from "@/lib/jobs/steps/generateSubtitles";
 import { requestLipSync } from "@/lib/jobs/steps/requestLipSync";
 import { transcribeMedia } from "@/lib/jobs/steps/transcribeMedia";
 import { translateTranscript } from "@/lib/jobs/steps/translateTranscript";
+import {
+  cleanupStagedSourceMedia,
+  stageSourceMedia,
+  type StagedSourceMedia,
+} from "@/lib/storage/stageSourceMedia";
 import type { JobRow } from "@/types/jobs";
 
 const STEP_NAME = "processJob";
@@ -62,12 +67,27 @@ async function transitionJobStatus(
   });
 }
 
+function logProcessCompletion(
+  jobId: string,
+  startedAt: number,
+  finalStatus: JobRow["status"],
+): void {
+  console.info("[jobs] step completed", {
+    job_id: jobId,
+    step: STEP_NAME,
+    duration_ms: Date.now() - startedAt,
+    final_status: finalStatus,
+  });
+}
+
 export async function processJob(
   db: DatabaseExecutor,
   input: ProcessJobInput,
 ): Promise<JobRow> {
   const startedAt = Date.now();
   let job = await reloadJob(db, input.jobId);
+  let stagedSourceMedia: StagedSourceMedia | null = null;
+  let processingError: unknown = null;
 
   if (job.status !== JOB_STATE.QUEUED) {
     throw new Error(
@@ -82,13 +102,18 @@ export async function processJob(
   });
 
   try {
+    stagedSourceMedia = await stageSourceMedia({
+      jobId: job.id,
+      storagePath: job.source_media_path,
+    });
+
     job = await transitionJobStatus(db, job, JOB_STATE.NORMALIZING);
 
     const outputRootDir = input.outputRootDir ?? "media";
     const normalizationOutputDir = `${outputRootDir}/${job.id}`;
-    const normalizedKind = inferNormalizedMediaKind(job.source_media_path);
+    const normalizedKind = inferNormalizedMediaKind(stagedSourceMedia.localPath);
     const normalized = await normalizeMedia({
-      inputPath: job.source_media_path,
+      inputPath: stagedSourceMedia.localPath,
       outputDir: normalizationOutputDir,
       kind: normalizedKind,
     });
@@ -133,8 +158,9 @@ export async function processJob(
 
     if (job.output_mode === "subtitles") {
       await reconcileJobOutputs(job.id);
-
-      return reloadJob(db, job.id);
+      const finalJob = await reloadJob(db, job.id);
+      logProcessCompletion(input.jobId, startedAt, finalJob.status);
+      return finalJob;
     }
 
     await generateDubbedAudio(db, {
@@ -146,8 +172,9 @@ export async function processJob(
 
     if (job.output_mode === "dubbed_audio") {
       await reconcileJobOutputs(job.id);
-
-      return reloadJob(db, job.id);
+      const finalJob = await reloadJob(db, job.id);
+      logProcessCompletion(input.jobId, startedAt, finalJob.status);
+      return finalJob;
     }
 
     await requestLipSync(db, {
@@ -156,16 +183,11 @@ export async function processJob(
     });
 
     job = await reloadJob(db, job.id);
-
-    console.info("[jobs] step completed", {
-      job_id: input.jobId,
-      step: STEP_NAME,
-      duration_ms: Date.now() - startedAt,
-      final_status: job.status,
-    });
+    logProcessCompletion(input.jobId, startedAt, job.status);
 
     return job;
   } catch (error) {
+    processingError = error;
     const latestJob = await reloadJob(db, input.jobId).catch(() => null);
     const errorMessage =
       error instanceof Error ? error.message : "Worker job processing failed.";
@@ -193,5 +215,24 @@ export async function processJob(
     });
 
     throw error;
+  } finally {
+    if (stagedSourceMedia) {
+      try {
+        await cleanupStagedSourceMedia(stagedSourceMedia);
+      } catch (cleanupError) {
+        const cleanupMessage =
+          cleanupError instanceof Error
+            ? cleanupError.message
+            : "Failed to clean up staged source media.";
+
+        console.warn("[storage] staging cleanup failed", {
+          job_id: input.jobId,
+          staging_dir: stagedSourceMedia.stagingDir,
+          error_message: cleanupMessage,
+          processing_error:
+            processingError instanceof Error ? processingError.message : null,
+        });
+      }
+    }
   }
 }

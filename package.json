@@ -6,11 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "worker": "tsx worker/main.ts",
+    "worker:once": "tsx worker/main.ts --once"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.2",
     "next": "16.1.6",
+    "pg": "^8.20.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "stripe": "^20.4.1"
@@ -18,11 +21,13 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
