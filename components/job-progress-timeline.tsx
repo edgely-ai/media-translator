@@ -1,4 +1,4 @@
-import type { JobStatus } from "@/types/jobs";
+import type { JobStatus, JobTargetStatus, OutputMode } from "@/types/jobs";
 
 const TIMELINE_STEPS: Array<{
   key: string;
@@ -49,18 +49,76 @@ const TERMINAL_TONE: Record<Extract<JobStatus, "completed" | "partial_success" |
     failed: "border-red-200 bg-red-50 text-red-700",
   };
 
-function getCurrentStepIndex(status: JobStatus): number {
-  const index = TIMELINE_STEPS.findIndex((step) => step.states.includes(status));
+function getCurrentStepIndex(
+  status: JobStatus,
+  outputMode?: OutputMode,
+): number {
+  const steps = getRelevantTimelineSteps(outputMode);
+  const index = steps.findIndex((step) => step.states.includes(status));
 
   return index >= 0 ? index : 0;
 }
 
-export function JobProgressTimeline({ status }: { status: JobStatus }) {
-  const currentStepIndex = getCurrentStepIndex(status);
+interface JobProgressTimelineProps {
+  status: JobStatus;
+  outputMode?: OutputMode;
+  targets?: Array<{
+    status: JobTargetStatus;
+    targetLanguage: string;
+  }>;
+}
+
+function getRelevantTimelineSteps(outputMode?: OutputMode) {
+  return TIMELINE_STEPS.filter((step) => {
+    if (step.key === "audio" && outputMode === "subtitles") {
+      return false;
+    }
+
+    if (step.key === "lipsync" && outputMode !== "lip_sync") {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function summarizeTargets(
+  targets: JobProgressTimelineProps["targets"],
+): string | null {
+  if (!targets || targets.length === 0) {
+    return null;
+  }
+
+  const summary = targets.reduce(
+    (counts, target) => {
+      counts[target.status] = (counts[target.status] ?? 0) + 1;
+      return counts;
+    },
+    {} as Partial<Record<JobTargetStatus, number>>,
+  );
+
+  const parts = [
+    summary.completed ? `${summary.completed} completed` : null,
+    summary.audio_ready ? `${summary.audio_ready} audio ready` : null,
+    summary.lipsync_requested ? `${summary.lipsync_requested} lip-sync requested` : null,
+    summary.failed ? `${summary.failed} failed` : null,
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" • ") : null;
+}
+
+export function JobProgressTimeline({
+  status,
+  outputMode,
+  targets,
+}: JobProgressTimelineProps) {
+  const steps = getRelevantTimelineSteps(outputMode);
+  const currentStepIndex = getCurrentStepIndex(status, outputMode);
+  const targetSummary = summarizeTargets(targets);
 
   return (
     <div className="grid gap-4">
-      {TIMELINE_STEPS.map((step, index) => {
+      {steps.map((step, index) => {
         const isCurrent = index === currentStepIndex;
         const isComplete = index < currentStepIndex;
         const isTerminal =
@@ -88,6 +146,9 @@ export function JobProgressTimeline({ status }: { status: JobStatus }) {
                 {isCurrent ? "Current" : isComplete ? "Done" : "Upcoming"}
               </span>
             </div>
+            {step.key === "done" && targetSummary ? (
+              <p className="mt-2 text-xs text-current/80">{targetSummary}</p>
+            ) : null}
           </div>
         );
       })}
