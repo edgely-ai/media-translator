@@ -1,357 +1,162 @@
-# Media Translator — System Architecture
+# Media Translator Architecture
 
 ## Overview
 
-Media Translator is a SaaS application that converts spoken media into other languages.
+Confirmed facts:
 
-Users upload a video or audio file and select:
+Media Translator is a Next.js application for creating media-translation jobs,
+tracking billing credits, editing transcripts, and eventually producing one of
+three output modes per job:
 
-- one output mode
-- one or more target languages
+- `subtitles`
+- `dubbed_audio`
+- `lip_sync`
 
-The system processes the media through an AI pipeline and produces
-outputs such as subtitles, dubbed audio, or lip-synced video.
+The repository currently contains the application shell, API routes, database
+schema, billing flows, transcript editing, processing-step implementations, and
+a worker handler entry point. It does not yet contain a complete production
+worker runtime or concrete non-mock AI provider integrations.
 
----
+Assumption:
 
-## High-Level System Components
+- The intended long-term shape is an app plus a separate worker/runtime, but the
+  worker deployment itself is not present in the repo.
 
-Frontend
+## Main Components
 
-- Next.js App Router
-- Dashboard
-- Upload interface
-- Job status UI
-- Transcript editor
+### Frontend
 
-Backend
+- `app/page.tsx`
+  Upload-first entry page. Initializes uploads, uploads the source file to
+  Supabase Storage from the browser, then creates a job.
+- `app/dashboard/page.tsx`
+  Dashboard shell with billing summary and mock recent jobs.
+- `app/dashboard/billing/page.tsx`
+  Billing page backed by live billing status.
+- `app/dashboard/jobs/[jobId]/page.tsx`
+  Job detail shell with mock job metadata plus a real transcript editor panel.
+- `components/transcript-editor-panel.tsx`
+  Real transcript fetch/save UI against `/api/jobs/[jobId]/transcript`.
+- `components/billing-status-panel.tsx`
+  Client-side fetch of live Stripe/Supabase billing status.
+- `components/job-progress-timeline.tsx`
+  UI-only rendering of job states.
 
-- Next.js API routes
-- Supabase PostgreSQL
+### API Layer
+
+Thin Next.js route handlers in `app/api/*` validate JSON/auth and delegate to
+`lib/` modules:
+
+- `/api/uploads/init`
+- `/api/jobs/create`
+- `/api/jobs/[jobId]/transcript`
+- `/api/billing/status`
+- `/api/stripe/create-checkout-session`
+- `/api/stripe/webhook`
+- `/api/webhooks/lipsync`
+
+### Domain Logic in `lib/`
+
+- `lib/storage/*`
+  Upload path generation and client upload orchestration.
+- `lib/jobs/*`
+  Job creation, enqueueing, orchestration, reconciliation, state handling, and
+  webhook handling.
+- `lib/jobs/steps/*`
+  Individual pipeline stages.
+- `lib/credits/*`
+  Credit estimation and ledger-oriented accounting helpers.
+- `lib/billing/*`
+  Stripe checkout, webhook processing, and billing status aggregation.
+- `lib/transcript/*`
+  Transcript read/update behavior.
+- `lib/db/*`
+  SQL-oriented helper functions built around a generic `DatabaseExecutor`
+  abstraction.
+- `lib/ai/*`
+  Provider abstraction layers for transcription, translation, TTS, and lip-sync.
+- `lib/ffmpeg/*`
+  Media normalization and audio extraction.
+
+### Data Layer
+
+- Supabase Postgres for relational state
+- Supabase Storage for uploaded source media
+- Stripe for billing/subscription state
+- Local filesystem writes for generated subtitle/audio artifacts in the current
+  processing implementation
+
+## External Services
+
+- Supabase Auth
+  Browser session access token is sent to API routes; server validates it via
+  `supabase.auth.getUser`.
 - Supabase Storage
-
-Media Processing
-
+  Source files are uploaded to `media/uploads/{userId}/{uploadId}/source.ext`.
+- Stripe
+  Used for Checkout, subscription lookup, and webhook-based credit grants.
 - FFmpeg
-- Speech-to-Text
-- Translation
-- Text-to-Speech
-- Lip-Sync provider
-
-Worker
-
-- background job processor
-- orchestrates pipeline steps
-
-Billing
-
-- Stripe subscriptions
-- credit accounting system
-
----
-
-## Core Data Model
-
-profiles  
-User account information.
-
-plans  
-Subscription plans and monthly credit allocation.
-
-jobs  
-Represents one uploaded media processing request.
-
-job_targets  
-Represents one output language per job.
-
-transcript_segments  
-Stores source transcript segments with timestamps.
-
-translated_segments  
-Stores translated text for each transcript segment and target language.
-
-credit_ledger  
-Tracks all credit changes.
-
-billing_events  
-Tracks subscription events from Stripe.
-
----
-
-## Job Lifecycle
-
-A job progresses through several states.
-
-created  
-Job record exists but processing has not started.
-
-queued  
-Job is waiting for a worker.
-
-normalizing  
-Source media is converted into a standard format.
-
-extracting_audio  
-Audio track is extracted.
-
-transcribing  
-Speech-to-text runs.
-
-transcript_ready  
-Transcript segments are saved.
-
-translating  
-Transcript segments are translated.
-
-generating_subtitles  
-Subtitle files are produced.
-
-generating_dubbed_audio  
-Translated speech audio is synthesized.
-
-lip_sync_pending  
-Lip-sync provider is rendering video.
-
-completed  
-All outputs generated.
-
-partial_success  
-Some outputs succeeded while others failed.
-
-failed  
-The job could not be processed.
-
----
-
-## Job Processing Pipeline
-
-Step 1  
-User uploads media.
-
-Step 2  
-Upload metadata is validated.
-
-Step 3  
-A job record is created.
-
-Step 4  
-Credits are reserved.
-
-Step 5  
-The worker processes the job.
-
-Processing steps:
-
-1. normalizeMedia  
-Standardize codec and format.
-
-2. extractAudio  
-Produce WAV audio.
-
-3. transcribeMedia  
-Speech-to-text generates segments.
-
-4. translateTranscript  
-Segments translated per target language.
-
-5. generateSubtitles  
-Produce .srt files.
-
-6. generateDubbedAudio  
-Generate translated speech audio.
-
-7. requestLipSync (optional)  
-Send video and audio to lip-sync provider.
-
----
-
-## Media Pipeline
-
-Input media is normalized to avoid codec problems.
-
-Example conversion:
-
-source video → normalized MP4  
-source audio → mono WAV
-
-This prevents failures in later steps.
-
-FFmpeg utilities handle these tasks.
-
----
-
-## Transcript Model
-
-Transcript is stored in segments.
-
-Each segment contains:
-
-- segment_index
-- source_start_ms
-- source_end_ms
-- source_text
-- edited_source_text
-
-Users can edit transcripts before translation.
-
-If edited text exists it replaces source_text during translation.
-
----
-
-## Translation Model
-
-Each transcript segment is translated per target language.
-
-Relationship:
-
-transcript_segments → translated_segments → job_targets
-
-A unique translated segment exists for:
-
-(job_target_id, transcript_segment_id)
-
----
-
-## Credit System
-
-Credits represent compute usage.
-
-Credits are calculated as:
-
-credits = duration_minutes × number_of_languages × multiplier
-
-Multipliers
-
-subtitles = 1  
-dubbed_audio = 1.5  
-lip_sync = 3
-
-Credit flow
-
-1. estimate credits
-2. reserve credits
-3. finalize credits on success
-4. release credits on failure
-
-All credit mutations are written to credit_ledger.
-
----
-
-## Partial Success Strategy
-
-Jobs may partially succeed.
-
-Example:
-
-subtitles generated  
-dubbed audio generated  
-lip sync failed
-
-The job status becomes:
-
-partial_success
-
-Completed outputs remain available.
-
-Unused reserved credits are released.
-
----
-
-## Worker Architecture
-
-Media processing does not run in HTTP requests.
-
-Instead a background worker processes jobs.
-
-Worker responsibilities
-
-- poll queued jobs
-- execute pipeline steps
-- update job state
-- store outputs
-- finalize or release credits
-
-Worker code lives in:
-
-worker/
-worker/handlers/
-
----
-
-## Storage Layout
-
-Files are stored in structured paths.
-
-Example:
-
-media/{job_id}/source.mp4  
-media/{job_id}/audio.wav  
-media/{job_id}/subtitles/en.srt  
-media/{job_id}/dubbed/fr.wav  
-media/{job_id}/lip_sync/fr.mp4
-
----
-
-## Output Modes
-
-Each job has one output mode.
-
-subtitles  
-Generate subtitle files.
-
-dubbed_audio  
-Generate translated speech audio.
-
-lip_sync  
-Generate lip-synced video.
-
----
-
-## Lip Sync Constraints
-
-Lip sync works best when:
-
-- speaker's face is visible
-- minimal scene cuts
-- short video duration
-
-V1 restrictions
-
-- talking-head videos only
-- max duration 5 minutes
-
-If lip sync fails the job remains usable.
-
----
-
-## Observability
-
-Each pipeline step logs:
-
-- job_id
-- step name
-- elapsed time
-- provider response id
-- error message
-
-Logs allow debugging and retry.
-
----
-
-## Development Philosophy
-
-Build defensively.
-
-Assume user uploads will be messy.
-
-Normalize media early.
-
-Allow partial success.
-
-Keep modules small and composable.
-
-Avoid tightly coupled code.
-
-Workers should handle heavy processing.
-
-API routes should remain thin.
+  Required by normalization and audio extraction steps.
+- AI providers
+  Abstracted behind `lib/ai/*`. Current code supports `mock` or
+  `not configured` behavior only.
+
+## Data Flow
+
+### Upload and Job Creation
+
+1. Browser requests `/api/uploads/init`.
+2. Server validates file metadata and returns a server-owned storage path.
+3. Browser uploads directly to Supabase Storage using the authenticated browser
+   Supabase client.
+4. Browser calls `/api/jobs/create`.
+5. Server validates ownership, duration, mode, targets, and credits.
+6. Supabase RPC `create_job_with_credit_reservation` creates the job,
+   job_targets, and reserve ledger entry.
+
+### Processing
+
+1. A future worker/runtime would move a job from `created` to `queued`.
+2. `processJob()` runs normalize -> extract audio -> transcribe -> translate ->
+   subtitles -> dubbed audio -> lip-sync request.
+3. Each step updates job and target rows.
+4. Final status and credit release/finalization are derived by
+   `reconcileJobOutputs()`.
+5. Lip-sync completion is expected to arrive later via webhook.
+
+### Billing
+
+1. Authenticated client calls checkout-session route with a plan name.
+2. Server ensures a Stripe customer and creates a hosted subscription checkout.
+3. Stripe webhook stores each event in `billing_events`.
+4. `invoice.paid` grants plan credits into `credit_ledger`.
+5. Billing status API combines Stripe subscription data with ledger balance.
+
+## Boundaries and Separation of Concerns
+
+- UI components should remain presentational or thin data-fetching clients.
+- API routes are intentionally thin.
+- Business logic belongs in `lib/`.
+- Media processing belongs in processing modules / worker path, not routes.
+- DB schema changes belong in SQL migrations.
+- Credit accounting must be append-only via `credit_ledger`.
+
+## Important Current Boundaries
+
+Confirmed facts:
+
+- The generic SQL helpers in `lib/db/*` are designed for a database executor,
+  but this repository does not include a concrete executor implementation wired
+  into a running worker.
+- Processing steps currently write generated outputs to the local filesystem,
+  not back into Supabase Storage.
+- The job detail page is still mostly mock UI even though transcript editing is
+  live.
+
+## Code/Doc Inconsistencies Flagged
+
+- The previous `PIPELINE.md` did not describe the actual pipeline at all.
+- Existing docs implied a concrete worker architecture; the repo currently has a
+  worker handler module but no queue consumer or deployed worker service.
+- Existing docs implied more complete live job detail views than the current UI
+  actually provides.
