@@ -7,6 +7,11 @@ import { getJobById, updateJobStatus } from "@/lib/db/jobs";
 import { listSubtitleSegmentsByJobTargetId } from "@/lib/db/translatedSegments";
 import { JOB_STATE, TARGET_STATE } from "@/lib/jobs/jobStates";
 import { listTargetsByJobId, updateJobTargetStatus } from "@/lib/db/targets";
+import {
+  buildDubbedAudioStoragePath,
+  cleanupLocalArtifact,
+  uploadLocalArtifactToStorage,
+} from "@/lib/storage/uploadArtifact";
 import type { JobRow, JobTargetRow } from "@/types/jobs";
 import type { TTSSegmentInput } from "@/types/audio";
 import type { SubtitleSegmentRow } from "@/types/transcript";
@@ -139,31 +144,48 @@ export async function generateDubbedAudio(
         targetLanguage: target.target_language,
         segments: buildSpeechSegments(segments),
       });
-      const dubbedAudioPath = buildDubbedAudioPath(
+      const localDubbedAudioPath = buildDubbedAudioPath(
         input.jobId,
         target.target_language,
         synthesizedAudio.format,
         input.outputRootDir,
       );
+      const durableDubbedAudioPath = buildDubbedAudioStoragePath(
+        input.jobId,
+        target.target_language,
+        synthesizedAudio.format,
+      );
 
-      await writeFile(dubbedAudioPath, Buffer.from(synthesizedAudio.audio));
+      await writeFile(localDubbedAudioPath, Buffer.from(synthesizedAudio.audio));
+      await uploadLocalArtifactToStorage({
+        jobId: input.jobId,
+        localPath: localDubbedAudioPath,
+        storagePath: durableDubbedAudioPath,
+        contentType: synthesizedAudio.mimeType,
+        artifactKind: "dubbed_audio",
+      });
 
       const targetStatus = getSuccessfulTargetStatus(job);
       await updateJobTargetStatus(db, {
         targetId: target.id,
         status: targetStatus,
-        dubbedAudioPath,
+        dubbedAudioPath: durableDubbedAudioPath,
         errorMessage: null,
         completedAt:
           targetStatus === TARGET_STATE.COMPLETED
             ? new Date().toISOString()
             : null,
       });
+      await cleanupLocalArtifact(
+        input.jobId,
+        "dubbed_audio",
+        localDubbedAudioPath,
+      );
 
       successes.push({
         targetId: target.id,
         targetLanguage: target.target_language,
-        dubbedAudioPath,
+        dubbedAudioPath: durableDubbedAudioPath,
         format: synthesizedAudio.format,
         mimeType: synthesizedAudio.mimeType,
       });

@@ -14,6 +14,12 @@ import {
   stageSourceMedia,
   type StagedSourceMedia,
 } from "@/lib/storage/stageSourceMedia";
+import {
+  buildExtractedAudioStoragePath,
+  buildNormalizedMediaStoragePath,
+  cleanupLocalArtifact,
+  uploadLocalArtifactToStorage,
+} from "@/lib/storage/uploadArtifact";
 import type { JobRow } from "@/types/jobs";
 
 const STEP_NAME = "processJob";
@@ -88,6 +94,8 @@ export async function processJob(
   let job = await reloadJob(db, input.jobId);
   let stagedSourceMedia: StagedSourceMedia | null = null;
   let processingError: unknown = null;
+  let localNormalizedMediaPath: string | null = null;
+  let localExtractedAudioPath: string | null = null;
 
   if (job.status !== JOB_STATE.QUEUED) {
     throw new Error(
@@ -117,10 +125,18 @@ export async function processJob(
       outputDir: normalizationOutputDir,
       kind: normalizedKind,
     });
+    localNormalizedMediaPath = normalized.outputPath;
+    const durableNormalizedMediaPath = await uploadLocalArtifactToStorage({
+      jobId: job.id,
+      localPath: normalized.outputPath,
+      storagePath: buildNormalizedMediaStoragePath(job.id, normalized.format),
+      contentType: normalized.format === "mp4" ? "video/mp4" : "audio/wav",
+      artifactKind: "normalized_media",
+    });
 
     job = await updateJobMediaPaths(db, {
       jobId: job.id,
-      normalizedMediaPath: normalized.outputPath,
+      normalizedMediaPath: durableNormalizedMediaPath,
     });
 
     job = await transitionJobStatus(db, job, JOB_STATE.EXTRACTING_AUDIO);
@@ -134,11 +150,28 @@ export async function processJob(
               outputDir: normalizationOutputDir,
             })
           ).outputPath;
+    localExtractedAudioPath = extractedAudioPath;
+    const durableExtractedAudioPath = await uploadLocalArtifactToStorage({
+      jobId: job.id,
+      localPath: extractedAudioPath,
+      storagePath: buildExtractedAudioStoragePath(job.id),
+      contentType: "audio/wav",
+      artifactKind: "extracted_audio",
+    });
 
     job = await updateJobMediaPaths(db, {
       jobId: job.id,
-      extractedAudioPath,
+      extractedAudioPath: durableExtractedAudioPath,
     });
+
+    if (normalized.kind === "video" && localNormalizedMediaPath) {
+      await cleanupLocalArtifact(
+        job.id,
+        "normalized_media",
+        localNormalizedMediaPath,
+      );
+      localNormalizedMediaPath = null;
+    }
 
     job = await transitionJobStatus(db, job, JOB_STATE.TRANSCRIBING);
 
@@ -147,6 +180,24 @@ export async function processJob(
       audioPath: extractedAudioPath,
       languageHint: job.source_language,
     });
+
+    if (localExtractedAudioPath) {
+      await cleanupLocalArtifact(
+        job.id,
+        "extracted_audio",
+        localExtractedAudioPath,
+      );
+      localExtractedAudioPath = null;
+    }
+
+    if (localNormalizedMediaPath) {
+      await cleanupLocalArtifact(
+        job.id,
+        "normalized_media",
+        localNormalizedMediaPath,
+      );
+      localNormalizedMediaPath = null;
+    }
 
     await translateTranscript(db, { jobId: job.id });
     await generateSubtitles(db, {

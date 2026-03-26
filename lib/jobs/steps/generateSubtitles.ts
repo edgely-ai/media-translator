@@ -8,6 +8,11 @@ import {
 } from "@/lib/db/translatedSegments";
 import { listTargetsByJobId, updateJobTargetStatus } from "@/lib/db/targets";
 import type { DatabaseExecutor } from "@/lib/db/client";
+import {
+  buildSubtitleStoragePath,
+  cleanupLocalArtifact,
+  uploadLocalArtifactToStorage,
+} from "@/lib/storage/uploadArtifact";
 import type { JobRow } from "@/types/jobs";
 import type { SubtitleSegmentRow } from "@/types/transcript";
 
@@ -132,31 +137,43 @@ export async function generateSubtitles(
 
       validateSubtitleSegments(segments);
 
-      const subtitlePath = buildSubtitlePath(
+      const localSubtitlePath = buildSubtitlePath(
         input.jobId,
         target.target_language,
         input.outputRootDir,
+      );
+      const durableSubtitlePath = buildSubtitleStoragePath(
+        input.jobId,
+        target.target_language,
       );
       const subtitleContent = buildSrtContent(segments);
 
       await mkdir(join(input.outputRootDir ?? "media", input.jobId, "subtitles"), {
         recursive: true,
       });
-      await writeFile(subtitlePath, subtitleContent, "utf8");
+      await writeFile(localSubtitlePath, subtitleContent, "utf8");
+      await uploadLocalArtifactToStorage({
+        jobId: input.jobId,
+        localPath: localSubtitlePath,
+        storagePath: durableSubtitlePath,
+        contentType: "application/x-subrip",
+        artifactKind: "subtitle",
+      });
 
       await updateJobTargetStatus(db, {
         targetId: target.id,
         status: TARGET_STATE.SUBTITLES_READY,
-        subtitlePath,
+        subtitlePath: durableSubtitlePath,
         errorMessage: null,
         completedAt:
           job.output_mode === "subtitles" ? new Date().toISOString() : null,
       });
+      await cleanupLocalArtifact(input.jobId, "subtitle", localSubtitlePath);
 
       successes.push({
         targetId: target.id,
         targetLanguage: target.target_language,
-        subtitlePath,
+        subtitlePath: durableSubtitlePath,
       });
     } catch (error) {
       const message =
