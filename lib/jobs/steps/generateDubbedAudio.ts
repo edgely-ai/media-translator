@@ -6,6 +6,7 @@ import type { DatabaseExecutor } from "@/lib/db/client";
 import { getJobById, updateJobStatus } from "@/lib/db/jobs";
 import { listSubtitleSegmentsByJobTargetId } from "@/lib/db/translatedSegments";
 import { JOB_STATE, TARGET_STATE } from "@/lib/jobs/jobStates";
+import { throwIfCancellationRequested } from "@/lib/jobs/cancellation";
 import {
   logJobStepCompleted,
   logJobStepFailed,
@@ -144,7 +145,15 @@ export async function generateDubbedAudio(
   const successes: GeneratedDubbedAudioResult[] = [];
   const failures: string[] = [];
 
+  await throwIfCancellationRequested(db, input.jobId, STEP_NAME);
+
   for (const target of eligibleTargets) {
+    await throwIfCancellationRequested(
+      db,
+      input.jobId,
+      `${STEP_NAME}:before_target:${target.target_language}`,
+    );
+
     try {
       const segments = await listSubtitleSegmentsByJobTargetId(db, target.id);
 

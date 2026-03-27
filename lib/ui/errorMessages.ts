@@ -188,6 +188,16 @@ export function getJobOutcomeMessage(job: JobDetailView): JobOutcomeMessage | nu
     };
   }
 
+  if (job.status === "canceled") {
+    return {
+      tone: "info",
+      title: "Job canceled",
+      message:
+        job.errorMessage ??
+        "Processing stopped after a cancellation request and no additional usable outputs were produced.",
+    };
+  }
+
   return {
     tone: "info",
     title: "Job is still processing",

@@ -38,15 +38,19 @@ const TIMELINE_STEPS: Array<{
   {
     key: "done",
     label: "Final outcome",
-    states: ["completed", "partial_success", "failed"],
+    states: ["completed", "partial_success", "failed", "canceled"],
   },
 ];
 
-const TERMINAL_TONE: Record<Extract<JobStatus, "completed" | "partial_success" | "failed">, string> =
+const TERMINAL_TONE: Record<
+  Extract<JobStatus, "completed" | "partial_success" | "failed" | "canceled">,
+  string
+> =
   {
     completed: "border-emerald-200 bg-emerald-50 text-emerald-800",
     partial_success: "border-amber-200 bg-amber-50 text-amber-800",
     failed: "border-red-200 bg-red-50 text-red-700",
+    canceled: "border-stone-300 bg-stone-100 text-stone-700",
   };
 
 function getCurrentStepIndex(
@@ -122,7 +126,10 @@ export function JobProgressTimeline({
         const isCurrent = index === currentStepIndex;
         const isComplete = index < currentStepIndex;
         const isTerminal =
-          status === "completed" || status === "partial_success" || status === "failed";
+          status === "completed" ||
+          status === "partial_success" ||
+          status === "failed" ||
+          status === "canceled";
 
         let tone =
           "border-stone-200 bg-white text-stone-700";

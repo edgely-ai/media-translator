@@ -8,6 +8,10 @@ import { listTranscriptSegmentsByJobId } from "@/lib/db/transcript";
 import { replaceTranslatedSegmentsForTarget } from "@/lib/db/translatedSegments";
 import { getJobById, updateJobStatus } from "@/lib/db/jobs";
 import {
+  isJobCancellationRequestedError,
+  throwIfCancellationRequested,
+} from "@/lib/jobs/cancellation";
+import {
   logJobStepCompleted,
   logJobStepFailed,
   logJobStepStarted,
@@ -96,10 +100,18 @@ export async function translateTranscript(
   });
 
   try {
+    await throwIfCancellationRequested(db, input.jobId, STEP_NAME);
+
     const results: TranslationResult[] = [];
     const failures: string[] = [];
 
     for (const target of targets) {
+      await throwIfCancellationRequested(
+        db,
+        input.jobId,
+        `${STEP_NAME}:before_target:${target.target_language}`,
+      );
+
       try {
         await updateJobTargetStatus(db, {
           targetId: target.id,
@@ -200,6 +212,10 @@ export async function translateTranscript(
 
     return results;
   } catch (error) {
+    if (isJobCancellationRequestedError(error)) {
+      throw error;
+    }
+
     const errorMessage =
       error instanceof Error ? error.message : "Transcript translation failed.";
 

@@ -29,6 +29,8 @@ type ReconciliationJobRow = Pick<
   | "output_mode"
   | "status"
   | "error_message"
+  | "cancel_reason"
+  | "canceled_at"
   | "completed_at"
 >;
 
@@ -171,6 +173,16 @@ function deriveJobStatus(
     };
   }
 
+  if (job.canceled_at) {
+    return {
+      status: JOB_STATE.CANCELED,
+      isTerminal: true,
+      successfulTargetIds: [],
+      failedTargetIds: failedTargets.map((target) => target.id),
+      pendingTargetIds: [],
+    };
+  }
+
   return {
     status: JOB_STATE.FAILED,
     isTerminal: true,
@@ -193,7 +205,9 @@ export async function reconcileJobOutputs(
 
   const { data: job, error: jobError } = await supabase
     .from("jobs")
-    .select("id, profile_id, output_mode, status, error_message, completed_at")
+    .select(
+      "id, profile_id, output_mode, status, error_message, cancel_reason, canceled_at, completed_at",
+    )
     .eq("id", jobId)
     .maybeSingle<ReconciliationJobRow>();
 
@@ -362,6 +376,10 @@ export async function reconcileJobOutputs(
   const terminalErrorMessage =
     derived.status === JOB_STATE.COMPLETED
       ? null
+      : derived.status === JOB_STATE.CANCELED
+        ? job.cancel_reason?.trim()
+          ? `Processing canceled by user request. Reason: ${job.cancel_reason.trim()}`
+          : "Processing canceled by user request."
       : targets
           .filter((target) => target.error_message)
           .map((target) => `${target.target_language}: ${target.error_message}`)

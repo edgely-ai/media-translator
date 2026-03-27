@@ -26,6 +26,8 @@ function getStatusTone(status: DashboardRecentJobView["status"]): string {
       return "border-sky-200 bg-sky-50 text-sky-800";
     case "failed":
       return "border-red-200 bg-red-50 text-red-700";
+    case "canceled":
+      return "border-stone-300 bg-stone-100 text-stone-700";
     default:
       return "border-stone-200 bg-stone-50 text-stone-700";
   }

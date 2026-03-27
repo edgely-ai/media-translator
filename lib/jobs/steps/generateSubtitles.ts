@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { getJobById, updateJobStatus } from "@/lib/db/jobs";
 import { JOB_STATE, TARGET_STATE } from "@/lib/jobs/jobStates";
+import { throwIfCancellationRequested } from "@/lib/jobs/cancellation";
 import {
   logJobStepCompleted,
   logJobStepFailed,
@@ -141,7 +142,15 @@ export async function generateSubtitles(
   const successes: GeneratedSubtitleResult[] = [];
   const failures: string[] = [];
 
+  await throwIfCancellationRequested(db, input.jobId, STEP_NAME);
+
   for (const target of eligibleTargets) {
+    await throwIfCancellationRequested(
+      db,
+      input.jobId,
+      `${STEP_NAME}:before_target:${target.target_language}`,
+    );
+
     try {
       const segments = await listSubtitleSegmentsByJobTargetId(db, target.id);
 

@@ -20,6 +20,7 @@ export const JOB_STATUSES = [
   "completed",
   "partial_success",
   "failed",
+  "canceled",
 ] as const;
 
 export type JobStatus = (typeof JOB_STATUSES)[number];
@@ -51,6 +52,10 @@ export interface JobRow {
   reserved_credits: number;
   finalized_credits: number;
   error_message: string | null;
+  cancel_requested_at: string | null;
+  cancel_reason: string | null;
+  canceled_at: string | null;
+  retry_of_job_id: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -92,4 +97,16 @@ export interface CreateJobResponse {
   estimatedCredits: number;
   reservedCredits: number;
   targetCount: number;
+}
+
+export interface CancelJobResponse {
+  jobId: string;
+  status: JobStatus;
+  cancelRequestedAt: string;
+  cancelReason: string | null;
+}
+
+export interface RetryJobResponse extends CreateJobResponse {
+  retryOfJobId: string;
+  retriedTargetLanguages: string[];
 }

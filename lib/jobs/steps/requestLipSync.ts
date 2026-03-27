@@ -2,6 +2,7 @@ import { requestLipSync as requestLipSyncFromProvider } from "@/lib/ai/lipsync";
 import type { DatabaseExecutor } from "@/lib/db/client";
 import { getJobById, updateJobStatus } from "@/lib/db/jobs";
 import { JOB_STATE, TARGET_STATE } from "@/lib/jobs/jobStates";
+import { throwIfCancellationRequested } from "@/lib/jobs/cancellation";
 import {
   logJobStepCompleted,
   logJobStepStarted,
@@ -61,7 +62,15 @@ export async function requestLipSync(
   const successes: LipSyncRequestResult[] = [];
   const failures: string[] = [];
 
+  await throwIfCancellationRequested(db, input.jobId, STEP_NAME);
+
   for (const target of eligibleTargets) {
+    await throwIfCancellationRequested(
+      db,
+      input.jobId,
+      `${STEP_NAME}:before_target:${target.target_language}`,
+    );
+
     try {
       if (!target.dubbed_audio_path) {
         throw new Error(

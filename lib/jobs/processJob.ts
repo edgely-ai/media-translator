@@ -5,6 +5,10 @@ import { normalizeMedia, type NormalizedMediaKind } from "@/lib/ffmpeg/normalize
 import { JOB_STATE, canTransitionJobState } from "@/lib/jobs/jobStates";
 import { reconcileJobOutputs } from "@/lib/jobs/reconcileJobOutputs";
 import {
+  isJobCancellationRequestedError,
+  throwIfCancellationRequested,
+} from "@/lib/jobs/cancellation";
+import {
   logJobStepCompleted,
   logJobStepFailed,
   logJobStepStarted,
@@ -102,6 +106,8 @@ export async function processJob(
   });
 
   try {
+    await throwIfCancellationRequested(db, job.id, "before_normalize");
+
     stagedSourceMedia = await stageSourceMedia({
       jobId: job.id,
       storagePath: job.source_media_path,
@@ -130,6 +136,8 @@ export async function processJob(
       jobId: job.id,
       normalizedMediaPath: durableNormalizedMediaPath,
     });
+
+    await throwIfCancellationRequested(db, job.id, "before_extract_audio");
 
     job = await transitionJobStatus(db, job, JOB_STATE.EXTRACTING_AUDIO);
 
@@ -165,6 +173,8 @@ export async function processJob(
       localNormalizedMediaPath = null;
     }
 
+    await throwIfCancellationRequested(db, job.id, "before_transcribe");
+
     job = await transitionJobStatus(db, job, JOB_STATE.TRANSCRIBING);
 
     await transcribeMedia(db, {
@@ -191,7 +201,12 @@ export async function processJob(
       localNormalizedMediaPath = null;
     }
 
+    await throwIfCancellationRequested(db, job.id, "before_translate");
+
     await translateTranscript(db, { jobId: job.id });
+
+    await throwIfCancellationRequested(db, job.id, "before_generate_subtitles");
+
     await generateSubtitles(db, {
       jobId: job.id,
       outputRootDir,
@@ -210,6 +225,8 @@ export async function processJob(
       });
       return finalJob;
     }
+
+    await throwIfCancellationRequested(db, job.id, "before_generate_dubbed_audio");
 
     await generateDubbedAudio(db, {
       jobId: job.id,
@@ -230,6 +247,8 @@ export async function processJob(
       return finalJob;
     }
 
+    await throwIfCancellationRequested(db, job.id, "before_request_lip_sync");
+
     await requestLipSync(db, {
       jobId: job.id,
       callbackUrl: input.lipSyncCallbackUrl ?? null,
@@ -246,6 +265,21 @@ export async function processJob(
     return job;
   } catch (error) {
     processingError = error;
+
+    if (isJobCancellationRequestedError(error)) {
+      const canceledJob = await reloadJob(db, input.jobId);
+
+      logJobStepCompleted({
+        jobId: input.jobId,
+        step: STEP_NAME,
+        startedAt,
+        final_status: canceledJob.status,
+        outcome: "canceled",
+      });
+
+      return canceledJob;
+    }
+
     const latestJob = await reloadJob(db, input.jobId).catch(() => null);
     const errorMessage =
       error instanceof Error ? error.message : "Worker job processing failed.";
