@@ -2,29 +2,23 @@
 
 ## Confirmed High-Impact Gaps
 
-- Provider integrations are mostly placeholders
-  STT, translation, TTS, and lip-sync layers only support `mock` or
-  `not configured` behavior.
-
 - Lip-sync output is not yet durably persisted back to Supabase Storage
 
-- Worker deployment is still repo-local
-  The repo now has a worker runtime and entrypoint, but no committed production
-  deployment packaging or service definition.
+- Lip-sync provider behavior remains less complete than STT, translation, and
+  TTS. The repo now has first real OpenAI-backed provider paths for those three
+  stages, but lip-sync still trails the rest of the pipeline.
 
-## Confirmed UI Gaps
+## Confirmed Operational Gaps
 
-- Dashboard recent jobs are mock data.
-- Job detail page metadata and artifact list are mock data.
-- Transcript editor is real, which means the job detail page is only partially
-  live and can be misleading.
+- Worker deployment is now repo-committed at the process level
+  Scripts and Procfiles exist, but production hardening such as health checks,
+  supervised restarts, and platform-specific rollout guidance is still not
+  committed.
 
 ## Confirmed State / Pipeline Fragility
 
-- Translation step currently fails hard on the first target translation error,
-  despite the broader design aiming for partial success behavior.
-- Lip-sync request handling can temporarily mark states inconsistently before
-  reconciliation normalizes the terminal status.
+- Lip-sync request handling can still temporarily mark states inconsistently
+  before reconciliation normalizes the terminal status.
 - Terminal credit handling depends on `reconcileJobOutputs()`; avoid bypassing it
   when changing pipeline logic.
 
@@ -56,10 +50,9 @@
 
 ## Recommended Safe Areas for Iteration
 
-- Replace mock UI sections with live queries
-- Add concrete provider adapters behind existing interfaces
-- Add structured logging
 - Add durable lip-sync artifact storage
+- Add provider depth and fallback handling beyond the first real OpenAI paths
+- Add deployment-platform health checks and supervision guidance
 
 ## Top 5 Architectural Risks
 
@@ -67,17 +60,18 @@
    but now depends on worker-side local staging and cleanup behaving correctly.
 2. Lip-sync durable artifact persistence is still incomplete, leaving the output
    model inconsistent across artifact types.
-3. Partial-success behavior is not implemented consistently across all stages,
-   especially translation failure handling.
-4. Provider integrations are still mostly mock or not configured.
-5. Worker deployment/operations are still under-specified for production use.
+3. Worker operations are now packaged, but production supervision and health
+   strategy are still under-specified.
+4. Provider coverage is uneven because lip-sync still lags behind the rest of
+   the now-real STT/translation/TTS path.
+5. Terminal credit handling depends on reconciliation staying authoritative, so
+   future pipeline changes can still regress correctness if they bypass it.
 
 ## Top 5 Next Implementation Priorities
 
 1. Persist lip-sync outputs durably and store those durable paths.
-2. Improve partial-success correctness across target-level failures.
-3. Replace mock dashboard/job-detail job data with live reads from jobs and
-   job_targets.
-4. Add worker deployment packaging/instructions for a production runtime.
-5. Add at least one real provider integration behind the existing mock provider
-   interfaces, plus structured logging around step execution.
+2. Deepen lip-sync provider behavior so it matches the rest of the pipeline.
+3. Add retry and cancellation orchestration.
+4. Add production health checks and service-supervision guidance for the worker.
+5. Expand provider coverage and operational fallbacks beyond the first OpenAI
+   integration slice.

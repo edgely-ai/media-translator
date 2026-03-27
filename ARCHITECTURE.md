@@ -15,13 +15,14 @@ three output modes per job:
 The repository currently contains the application shell, API routes, database
 schema, billing flows, transcript editing, processing-step implementations, and
 a worker runtime, worker handler entry point, source-media staging, and durable
-artifact upload-back to Supabase Storage. It does not yet contain concrete
-non-mock AI provider integrations or committed worker deployment packaging.
+artifact upload-back to Supabase Storage. It also contains first real OpenAI
+provider paths for STT, translation, and TTS plus committed web/worker process
+packaging.
 
 Assumption:
 
-- The intended long-term shape is an app plus a separate worker/runtime, but the
-  worker deployment itself is not present in the repo.
+- The intended long-term shape remains an app plus a separate worker/runtime,
+  with deployment-platform-specific hardening left to the target environment.
 
 ## Main Components
 
@@ -31,11 +32,12 @@ Assumption:
   Upload-first entry page. Initializes uploads, uploads the source file to
   Supabase Storage from the browser, then creates a job.
 - `app/dashboard/page.tsx`
-  Dashboard shell with billing summary and mock recent jobs.
+  Dashboard with upload flow, billing summary, and live recent jobs.
 - `app/dashboard/billing/page.tsx`
   Billing page backed by live billing status.
 - `app/dashboard/jobs/[jobId]/page.tsx`
-  Job detail shell with mock job metadata plus a real transcript editor panel.
+  Job detail page with live metadata, artifact reads, progress timeline, and a
+  real transcript editor panel.
 - `components/transcript-editor-panel.tsx`
   Real transcript fetch/save UI against `/api/jobs/[jobId]/transcript`.
 - `components/billing-status-panel.tsx`
@@ -99,8 +101,8 @@ Thin Next.js route handlers in `app/api/*` validate JSON/auth and delegate to
 - FFmpeg
   Required by normalization and audio extraction steps.
 - AI providers
-  Abstracted behind `lib/ai/*`. Current code supports `mock` or
-  `not configured` behavior only.
+  Abstracted behind `lib/ai/*`. Current code supports real OpenAI-backed STT,
+  translation, and TTS, plus env-selectable `mock` fallbacks.
 
 ## Data Flow
 
@@ -153,13 +155,14 @@ Confirmed facts:
   and the worker now includes a concrete Postgres-backed executor.
 - Processing uses worker-local files as temporary working artifacts, but durable
   outputs are uploaded back into Supabase Storage.
-- The job detail page is still mostly mock UI even though transcript editing is
-  live.
+- The dashboard and job detail routes now read live job data, while keeping UI
+  concerns separate from `lib/` read helpers.
 
 ## Code/Doc Inconsistencies Flagged
 
 - The previous `PIPELINE.md` did not describe the actual pipeline at all.
 - Existing docs implied no queue consumer/runtime, but the repo now has a
   worker poller plus worker entrypoint.
-- Existing docs implied more complete live job detail views than the current UI
-  actually provides.
+- Existing docs implied the worker lacked repo-committed process packaging, but
+  the repo now includes explicit web/worker scripts plus `Procfile.dev` and
+  `Procfile`.

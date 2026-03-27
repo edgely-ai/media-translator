@@ -6,21 +6,24 @@ Confirmed facts:
 
 - The repo contains a Next.js app, Supabase integrations, Stripe integrations,
   and processing modules that require FFmpeg.
-- The repo now contains a worker entrypoint and runtime, but still does not
-  contain committed worker deployment config.
+- The repo now contains a worker entrypoint and runtime, committed process
+  files, and package scripts for running the web app and worker as separate
+  long-lived processes.
 
 Assumption:
 
-This repository is closest to a single Next.js application deployment plus
-external managed services:
+This repository is closest to a two-process deployment plus external managed
+services:
 
-- Next.js app server
+- Next.js web service
+- worker service
 - Supabase project
 - Stripe account/webhooks
-- FFmpeg available on the runtime that would execute processing
+- FFmpeg available on the runtime that executes processing
 
-There is no committed deployment config for Vercel, Docker, or a separate worker
-service in the current repository.
+There is still no cloud-vendor-specific deployment config in the repository.
+The committed shape is process-level packaging: `Procfile.dev` for local
+development and `Procfile` for web/worker service commands.
 
 ## Environments
 
@@ -60,6 +63,24 @@ Provider selection / local mocks:
 - `TRANSLATION_MOCK_PREFIX`
 - `TTS_PROVIDER`
 - `LIPSYNC_PROVIDER`
+- `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
+- `OPENAI_TRANSCRIPTION_MODEL`
+- `OPENAI_TRANSLATION_MODEL`
+- `OPENAI_TTS_MODEL`
+- `OPENAI_TTS_VOICE`
+
+Database:
+
+- `DATABASE_URL`
+
+Worker runtime:
+
+- `WORKER_POLL_INTERVAL_MS`
+- `WORKER_QUEUED_SCAN_LIMIT`
+- `WORKER_OUTPUT_ROOT_DIR`
+- `WORKER_STAGING_ROOT`
+- `WORKER_LIPSYNC_CALLBACK_URL`
 
 ## Hosting Assumptions
 
@@ -73,14 +94,34 @@ Confirmed facts:
 
 ### Processing Runtime
 
-Assumption based on current code path:
+Confirmed facts based on current code path:
 
-If processing is executed from this codebase, the runtime must also provide:
+The worker runtime must provide:
 
 - `ffmpeg` on `PATH`
-- writable local disk for `media/{jobId}/...`
-- access to the source media path as a real local file
+- writable local disk for worker staging and output directories
 - access to the Supabase-backed source object and credentials to stage it locally
+- outbound network access to provider APIs and Supabase Storage
+
+## Local Development Pattern
+
+Committed dev-run pattern:
+
+1. Install dependencies with `npm install`.
+2. Start the web app with `npm run dev:web`.
+3. Start the worker in a second terminal with `npm run dev:worker`.
+
+Alternative:
+
+- Use `Procfile.dev` with a Procfile-compatible process manager to run `web`
+  and `worker` together.
+
+Expected behavior:
+
+- The web app handles auth, uploads, billing routes, and job creation.
+- The worker polls claimable jobs, stages source media locally, runs processing,
+  uploads durable artifacts back to Supabase Storage, and then reconciles final
+  job state.
 
 ## Worker / Function Topology
 
@@ -91,11 +132,8 @@ Implemented:
 - worker handler wrapper in `worker/handlers/process-media-job.ts`
 - worker runtime / poller
 - worker process entrypoint in `worker/main.ts`
-
-Missing:
-
-- background queue
-- deployment instructions for a worker service
+- committed `Procfile.dev` and `Procfile` with separate `web` and `worker`
+  commands
 
 ## Production Risks
 
@@ -103,17 +141,33 @@ Missing:
   still depends on local disk availability and correct service-role access.
 - Durable persistence now exists for normalized media, extracted audio,
   subtitles, and dubbed audio, but lip-sync output durability is still a gap.
-- Provider layers default to `not configured` unless explicitly set to `mock`.
+- Real OpenAI-backed STT, translation, and TTS paths now exist, but provider
+  selection still depends on explicit env configuration and lip-sync remains a
+  separate gap.
 - Service-role Supabase access is widely used; route boundaries matter.
 - Billing and lip-sync webhooks require externally configured secrets.
+- The committed process model is intentionally lightweight; health checks,
+  supervised restarts, and autoscaling remain deployment-platform concerns.
 
 ## Operational Recommendations
 
-Recommended next operational work, not currently implemented:
+Current recommended service model:
 
-- Treat current processing code as library/runtime logic, not a complete
-  production deployment.
-- Add a real worker service before enabling automatic job processing.
-- Add deployment packaging/instructions for the worker service.
+- Build the app once with `npm run build`.
+- Run the web service with `npm run start`.
+- Run the worker service separately with `npm run worker`.
+- Give both processes the same shared app env, and give the worker FFmpeg plus
+  writable local staging/output directories.
+
+Startup and shutdown expectations:
+
+- The worker is a long-lived poller, not a route-triggered job runner.
+- The runtime already handles `SIGINT` and `SIGTERM`, stops polling, closes the
+  Postgres pool, and exits after the active loop finishes.
+
+Still recommended next work:
+
 - Add durable persistence for lip-sync outputs.
-- Add structured logging before debugging production pipeline failures.
+- Add health checks and service supervision guidance for the chosen deployment
+  platform.
+- Add retry/cancellation orchestration when those work packages are prioritized.

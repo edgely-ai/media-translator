@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:web": "next dev",
+    "dev:worker": "tsx worker/main.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
