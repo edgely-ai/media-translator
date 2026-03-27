@@ -33,6 +33,9 @@ type OwnedJobDetailRow = Pick<
   | "reserved_credits"
   | "finalized_credits"
   | "error_message"
+  | "cancel_requested_at"
+  | "cancel_reason"
+  | "retry_of_job_id"
   | "created_at"
   | "updated_at"
   | "completed_at"
@@ -94,6 +97,9 @@ export interface JobDetailView {
   reservedCredits: number;
   finalizedCredits: number;
   errorMessage: string | null;
+  cancelRequestedAt: string | null;
+  cancelReason: string | null;
+  retryOfJobId: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -139,7 +145,7 @@ async function requireOwnedJob(
   const { data, error } = await supabase
     .from("jobs")
     .select(
-      "id, profile_id, source_media_path, normalized_media_path, extracted_audio_path, source_language, output_mode, status, duration_seconds, estimated_credits, reserved_credits, finalized_credits, error_message, created_at, updated_at, completed_at",
+      "id, profile_id, source_media_path, normalized_media_path, extracted_audio_path, source_language, output_mode, status, duration_seconds, estimated_credits, reserved_credits, finalized_credits, error_message, cancel_requested_at, cancel_reason, retry_of_job_id, created_at, updated_at, completed_at",
     )
     .eq("id", jobId)
     .maybeSingle<OwnedJobDetailRow>();
@@ -261,6 +267,9 @@ export async function getJobDetailForProfile(
     reservedCredits: job.reserved_credits,
     finalizedCredits: job.finalized_credits,
     errorMessage: job.error_message,
+    cancelRequestedAt: job.cancel_requested_at,
+    cancelReason: job.cancel_reason,
+    retryOfJobId: job.retry_of_job_id,
     createdAt: job.created_at,
     updatedAt: job.updated_at,
     completedAt: job.completed_at,

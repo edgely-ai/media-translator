@@ -1,15 +1,28 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { getBrowserSession } from "@/lib/supabase/browser";
 import { JobProgressTimeline } from "@/components/job-progress-timeline";
+import type { CancelJobResponse, RetryJobResponse } from "@/types/jobs";
 import type { JobDetailView as JobDetailViewModel } from "@/lib/jobs/readJobViews";
 import {
   getJobOutcomeMessage,
   getTargetFailureMessage,
 } from "@/lib/ui/errorMessages";
+import {
+  canCancelJob,
+  canRetryJob,
+  getCancelPendingMessage,
+  getCancelSuccessMessage,
+  getJobActionErrorMessage,
+  getRetryButtonCopy,
+  getRetrySuccessMessage,
+  parseRoutePayload,
+  type JobActionMessage,
+} from "@/lib/ui/jobActions";
 
 interface JobDetailViewProps {
   jobId: string;
@@ -87,10 +100,43 @@ function getOutcomeToneClass(
   }
 }
 
+async function fetchJobDetail(jobId: string): Promise<JobDetailViewModel> {
+  const session = await getBrowserSession();
+
+  if (!session?.access_token) {
+    throw new Error("Sign in to load this job.");
+  }
+
+  const response = await fetch(`/api/jobs/${jobId}`, {
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as JobDetailResponse;
+
+  if (!response.ok) {
+    throw new Error(
+      "error" in payload && typeof payload.error === "string"
+        ? payload.error
+        : "Failed to load job details.",
+    );
+  }
+
+  if (!isJobDetailPayload(payload)) {
+    throw new Error("Failed to load job details.");
+  }
+
+  return payload;
+}
+
 export function JobDetailView({ jobId }: JobDetailViewProps) {
+  const router = useRouter();
   const [job, setJob] = useState<JobDetailViewModel | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionState, setActionState] = useState<"cancel" | "retry" | null>(null);
+  const [actionMessage, setActionMessage] = useState<JobActionMessage | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,30 +146,10 @@ export function JobDetailView({ jobId }: JobDetailViewProps) {
       setError(null);
 
       try {
-        const session = await getBrowserSession();
-
-        if (!session?.access_token) {
-          throw new Error("Sign in to load this job.");
-        }
-
-        const response = await fetch(`/api/jobs/${jobId}`, {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          cache: "no-store",
-        });
-        const payload = (await response.json()) as JobDetailResponse;
-
-        if (!response.ok) {
-          throw new Error(
-            "error" in payload && typeof payload.error === "string"
-              ? payload.error
-              : "Failed to load job details.",
-          );
-        }
+        const nextJob = await fetchJobDetail(jobId);
 
         if (!cancelled) {
-          setJob(isJobDetailPayload(payload) ? payload : null);
+          setJob(nextJob);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -147,6 +173,85 @@ export function JobDetailView({ jobId }: JobDetailViewProps) {
       cancelled = true;
     };
   }, [jobId]);
+
+  async function refreshJobAfterAction(): Promise<JobDetailViewModel> {
+    const nextJob = await fetchJobDetail(jobId);
+    setJob(nextJob);
+    router.refresh();
+    return nextJob;
+  }
+
+  async function handleCancel() {
+    if (!job || !canCancelJob(job)) {
+      return;
+    }
+
+    setActionState("cancel");
+    setActionMessage(null);
+
+    try {
+      const session = await getBrowserSession();
+
+      if (!session?.access_token) {
+        throw new Error("Authentication is required.");
+      }
+
+      const response = await fetch(`/api/jobs/${jobId}/cancel`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+      await parseRoutePayload<CancelJobResponse>(
+        response,
+        "Failed to request cancellation.",
+      );
+
+      await refreshJobAfterAction();
+      setActionMessage(getCancelSuccessMessage());
+    } catch (actionError) {
+      setActionMessage(getJobActionErrorMessage("cancel", actionError));
+    } finally {
+      setActionState(null);
+    }
+  }
+
+  async function handleRetry() {
+    if (!job || !canRetryJob(job.status)) {
+      return;
+    }
+
+    setActionState("retry");
+    setActionMessage(null);
+
+    try {
+      const session = await getBrowserSession();
+
+      if (!session?.access_token) {
+        throw new Error("Authentication is required.");
+      }
+
+      const response = await fetch(`/api/jobs/${jobId}/retry`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const payload = await parseRoutePayload<RetryJobResponse>(
+        response,
+        "Failed to start retry attempt.",
+      );
+
+      await refreshJobAfterAction();
+      setActionMessage(getRetrySuccessMessage(job, payload));
+    } catch (actionError) {
+      setActionMessage(getJobActionErrorMessage("retry", actionError));
+    } finally {
+      setActionState(null);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -173,25 +278,100 @@ export function JobDetailView({ jobId }: JobDetailViewProps) {
   }
 
   const outcomeMessage = getJobOutcomeMessage(job);
+  const pendingCancelMessage = getCancelPendingMessage(job);
+  const showCancel = canCancelJob(job);
+  const showRetry = canRetryJob(job.status);
 
   return (
     <>
       <section className="rounded-[2rem] border border-stone-200/70 bg-white/90 p-8 shadow-[0_24px_80px_rgba(66,50,20,0.08)] backdrop-blur">
-        <p className="text-sm font-semibold uppercase tracking-[0.24em] text-stone-500">
-          Job detail
-        </p>
-        <h1 className="mt-4 text-4xl font-semibold tracking-tight text-stone-950">
-          {job.sourceName}
-        </h1>
-        <div className="mt-4 flex flex-wrap gap-3 text-sm text-stone-600">
-          <span className="rounded-full bg-stone-100 px-4 py-2">Job ID: {job.id}</span>
-          <span className="rounded-full bg-stone-100 px-4 py-2">Mode: {job.outputMode}</span>
-          <span className="rounded-full bg-stone-100 px-4 py-2">Status: {job.status}</span>
-          <span className="rounded-full bg-stone-100 px-4 py-2">
-            Targets: {job.targets.length}
-          </span>
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-stone-500">
+              Job detail
+            </p>
+            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-stone-950">
+              {job.sourceName}
+            </h1>
+            <div className="mt-4 flex flex-wrap gap-3 text-sm text-stone-600">
+              <span className="rounded-full bg-stone-100 px-4 py-2">Job ID: {job.id}</span>
+              <span className="rounded-full bg-stone-100 px-4 py-2">Mode: {job.outputMode}</span>
+              <span className="rounded-full bg-stone-100 px-4 py-2">Status: {job.status}</span>
+              <span className="rounded-full bg-stone-100 px-4 py-2">
+                Targets: {job.targets.length}
+              </span>
+            </div>
+          </div>
+
+          {showCancel || showRetry ? (
+            <div className="flex flex-col gap-3 lg:min-w-[18rem]">
+              {showCancel ? (
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  disabled={actionState !== null}
+                  className="inline-flex h-12 items-center justify-center rounded-full border border-red-300 bg-red-50 px-5 text-sm font-semibold text-red-700 transition hover:border-red-500 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {actionState === "cancel" ? "Requesting cancellation..." : "Cancel job"}
+                </button>
+              ) : null}
+
+              {showRetry ? (
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  disabled={actionState !== null}
+                  className="inline-flex h-12 items-center justify-center rounded-full border border-stone-300 bg-white px-5 text-sm font-semibold text-stone-800 transition hover:border-stone-900 hover:text-stone-950 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {actionState === "retry"
+                    ? "Starting retry..."
+                    : getRetryButtonCopy(job)}
+                </button>
+              ) : null}
+
+              {showRetry ? (
+                <p className="text-sm leading-6 text-stone-600">
+                  {job.status === "partial_success"
+                    ? "This retry will run only for targets that previously failed. Existing successful outputs remain on this job."
+                    : "This retry creates a new attempt for all original targets and leaves this job unchanged."}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </section>
+
+      {pendingCancelMessage ? (
+        <section
+          className={`rounded-[2rem] border p-6 shadow-[0_12px_40px_rgba(30,41,59,0.06)] ${getOutcomeToneClass(pendingCancelMessage.tone)}`}
+        >
+          <p className="text-sm font-semibold uppercase tracking-[0.2em]">
+            {pendingCancelMessage.title}
+          </p>
+          <p className="mt-2 text-sm leading-7">{pendingCancelMessage.message}</p>
+        </section>
+      ) : null}
+
+      {actionMessage ? (
+        <section
+          className={`rounded-[2rem] border p-6 shadow-[0_12px_40px_rgba(30,41,59,0.06)] ${getOutcomeToneClass(actionMessage.tone)}`}
+        >
+          <p className="text-sm font-semibold uppercase tracking-[0.2em]">
+            {actionMessage.title}
+          </p>
+          <p className="mt-2 text-sm leading-7">{actionMessage.message}</p>
+          {actionMessage.href && actionMessage.hrefLabel ? (
+            <div className="mt-4">
+              <Link
+                href={actionMessage.href}
+                className="inline-flex h-11 items-center justify-center rounded-full border border-current/30 px-5 text-sm font-semibold transition hover:border-current"
+              >
+                {actionMessage.hrefLabel}
+              </Link>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {outcomeMessage ? (
         <section
@@ -268,6 +448,25 @@ export function JobDetailView({ jobId }: JobDetailViewProps) {
               <dt className="font-medium text-stone-800">Completed at</dt>
               <dd>{job.completedAt ? formatDateTime(job.completedAt) : "Still running"}</dd>
             </div>
+            {job.cancelRequestedAt ? (
+              <div>
+                <dt className="font-medium text-stone-800">Cancel requested at</dt>
+                <dd>{formatDateTime(job.cancelRequestedAt)}</dd>
+              </div>
+            ) : null}
+            {job.retryOfJobId ? (
+              <div>
+                <dt className="font-medium text-stone-800">Retry of job</dt>
+                <dd>
+                  <Link
+                    href={`/dashboard/jobs/${job.retryOfJobId}`}
+                    className="text-stone-900 underline decoration-stone-300 underline-offset-4"
+                  >
+                    {job.retryOfJobId}
+                  </Link>
+                </dd>
+              </div>
+            ) : null}
             {job.errorMessage ? (
               <div>
                 <dt className="font-medium text-red-700">Latest job error</dt>
