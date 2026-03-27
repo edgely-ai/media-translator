@@ -9,7 +9,7 @@ Confirmed facts:
 
 - Upload initialization, job creation, processing-step modules, and webhook
   handlers exist.
-- A full queue-backed background execution system does not exist in this repo.
+- A worker runtime/poller exists and executes processing outside API routes.
 
 ## End-to-End Flow
 
@@ -41,8 +41,9 @@ Confirmed facts:
 
 ### 4. Queueing
 
-- Intended path: move job from `created` to `queued` using `enqueueJob()`
-- Current reality: queue infrastructure is not implemented in this repo
+- The worker claims `created` jobs, transitions them to `queued`, and then
+  executes processing.
+- The worker can also recover previously queued jobs for execution.
 
 ### 5. Background Processing
 
@@ -82,12 +83,38 @@ Pipeline order:
    - sends normalized video path and dubbed audio path to the lip-sync provider
    - stores provider job IDs
 
+### 5a. Cooperative Cancellation
+
+- Jobs can receive a cancel request while `queued` or active.
+- Cancellation requests are stored on the job:
+  - `cancel_requested_at`
+  - optional `cancel_reason`
+- Cancellation is cooperative rather than force-kill.
+- The worker honors cancellation only at safe boundaries:
+  - before normalization
+  - before audio extraction
+  - before transcription
+  - before translation
+  - before subtitle generation
+  - before dubbed-audio generation
+  - before lip-sync request
+  - before per-target loops where practical
+- In-flight FFmpeg or provider calls are not interrupted mid-step.
+- When cancellation is honored:
+  - unfinished targets are marked with cancellation-derived failures
+  - already successful outputs are preserved
+  - reconciliation decides the truthful terminal state
+- If no usable outputs exist, the job finishes as `canceled`.
+- If usable outputs already exist, the truthful terminal state may still be
+  `partial_success`.
+
 ### 6. Finalization
 
 - `reconcileJobOutputs()` determines terminal status:
   - `completed`
   - `partial_success`
   - `failed`
+  - `canceled`
 - It also writes `finalize` and/or `release` entries into `credit_ledger`
 
 ### 7. Lip-Sync Completion
@@ -98,21 +125,21 @@ Pipeline order:
 
 ## Async / Background Work
 
-- Intended background work exists as library code only
-- No queue transport, scheduler, or worker daemon is included in the repo
+- Background work is executed by the committed worker runtime
+- The worker remains a lightweight poller rather than a large queue stack
 - Lip-sync completion is explicitly asynchronous and webhook-driven
 
 ## Outputs and Current Storage Behavior
 
-Current implementation writes generated artifacts to the local filesystem:
+Current implementation uses local worker files as temporary artifacts and
+uploads durable outputs back to Supabase Storage:
 
 - `media/{jobId}/source.mp4` or `source.wav`
 - `media/{jobId}/audio.wav`
 - `media/{jobId}/subtitles/{lang}.srt`
 - `media/{jobId}/dubbed/{lang}.{format}`
 
-The schema also stores output paths on `job_targets`, but there is no current
-implementation that uploads generated outputs back to Supabase Storage.
+Durable storage paths are written back onto `jobs` and `job_targets`.
 
 ## Retry / Failure Behavior
 
@@ -120,8 +147,16 @@ implementation that uploads generated outputs back to Supabase Storage.
 - Processing step failures usually mark the job or target as failed
 - Reconciliation may downgrade an apparent failure to `partial_success` if some
   usable outputs exist
-- No queue-level retry/backoff mechanism is implemented
-- No user-facing retry flow is implemented
+- Manual retry is implemented as a new job attempt
+  - the original job is not rewound
+  - the new job links back via `retry_of_job_id`
+  - retry reuses the original source media path and output mode
+  - fully failed jobs retry all original targets
+  - `partial_success` jobs retry only failed targets
+  - retry reserves credits as a new attempt through the existing reservation
+    path
+- Automatic retry/backoff is still not implemented
+- Provider-specific retry behavior is still not implemented
 
 ## Important Failure Points
 
@@ -136,8 +171,9 @@ implementation that uploads generated outputs back to Supabase Storage.
 
 ## Implementation Mismatches to Keep in Mind
 
-- `jobs.source_media_path` is created from a Supabase Storage path, but FFmpeg
-  steps expect a directly readable filesystem path.
-- Translation step currently fails the whole job on the first target-level
-  translation failure rather than allowing partial translation success.
-- Generated artifacts are local files, not durable storage objects.
+- Cancellation is cooperative only; in-flight FFmpeg/provider work is not
+  force-killed.
+- Retry is manual new-attempt orchestration only; there is no automatic retry
+  engine or backoff policy.
+- UI-level cancel/retry actions remain more limited than the backend/API
+  support.
