@@ -8,11 +8,21 @@ export type ArtifactKind =
   | "normalized_media"
   | "extracted_audio"
   | "subtitle"
-  | "dubbed_audio";
+  | "dubbed_audio"
+  | "lip_sync_video";
 
 export interface UploadArtifactInput {
   jobId: string;
   localPath: string;
+  storagePath: string;
+  contentType: string;
+  artifactKind: ArtifactKind;
+  storageBucket?: string;
+}
+
+export interface UploadArtifactBytesInput {
+  jobId: string;
+  fileBytes: Uint8Array;
   storagePath: string;
   contentType: string;
   artifactKind: ArtifactKind;
@@ -45,24 +55,29 @@ export function buildDubbedAudioStoragePath(
   return join("media", jobId, "dubbed", `${targetLanguage}.${format}`);
 }
 
-export async function uploadLocalArtifactToStorage(
-  input: UploadArtifactInput,
+export function buildLipSyncStoragePath(
+  jobId: string,
+  targetLanguage: string,
+): string {
+  return join("media", jobId, "lip_sync", `${targetLanguage}.mp4`);
+}
+
+export async function uploadArtifactBytesToStorage(
+  input: UploadArtifactBytesInput,
 ): Promise<string> {
   const storageBucket = input.storageBucket ?? UPLOAD_STORAGE_BUCKET;
 
   console.info("[storage] artifact upload started", {
     job_id: input.jobId,
     artifact_kind: input.artifactKind,
-    local_path: input.localPath,
     storage_bucket: storageBucket,
     storage_path: input.storagePath,
   });
 
-  const fileBytes = await readFile(input.localPath);
   const supabase = createSupabaseAdminClient();
   const { error } = await supabase.storage
     .from(storageBucket)
-    .upload(input.storagePath, fileBytes, {
+    .upload(input.storagePath, input.fileBytes, {
       upsert: true,
       contentType: input.contentType,
     });
@@ -76,13 +91,33 @@ export async function uploadLocalArtifactToStorage(
   console.info("[storage] artifact upload completed", {
     job_id: input.jobId,
     artifact_kind: input.artifactKind,
-    local_path: input.localPath,
     storage_bucket: storageBucket,
     storage_path: input.storagePath,
-    bytes_uploaded: fileBytes.byteLength,
+    bytes_uploaded: input.fileBytes.byteLength,
   });
 
   return input.storagePath;
+}
+
+export async function uploadLocalArtifactToStorage(
+  input: UploadArtifactInput,
+): Promise<string> {
+  const fileBytes = await readFile(input.localPath);
+  console.info("[storage] local artifact read for upload", {
+    job_id: input.jobId,
+    artifact_kind: input.artifactKind,
+    local_path: input.localPath,
+    storage_path: input.storagePath,
+  });
+
+  return uploadArtifactBytesToStorage({
+    jobId: input.jobId,
+    fileBytes,
+    storagePath: input.storagePath,
+    contentType: input.contentType,
+    artifactKind: input.artifactKind,
+    storageBucket: input.storageBucket,
+  });
 }
 
 export async function cleanupLocalArtifact(

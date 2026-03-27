@@ -1,6 +1,7 @@
 import { TARGET_STATE } from "@/lib/jobs/jobStates";
 import { reconcileJobOutputs } from "@/lib/jobs/reconcileJobOutputs";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { persistLipSyncOutput } from "@/lib/storage/persistLipSyncOutput";
 import type { JobStatus, JobTargetRow } from "@/types/jobs";
 import type { LipSyncWebhookPayload } from "@/types/video";
 
@@ -158,23 +159,42 @@ export async function handleLipSyncWebhook(
     };
   }
 
-  const nextTargetStatus =
+  let nextTargetStatus =
     payload.status === TARGET_STATE.COMPLETED
       ? TARGET_STATE.COMPLETED
       : TARGET_STATE.FAILED;
-  const completedAt =
+  let completedAt =
     payload.status === TARGET_STATE.COMPLETED ? new Date().toISOString() : null;
+  let durableDubbedVideoPath: string | null = null;
+  let targetErrorMessage: string | null =
+    payload.status === TARGET_STATE.COMPLETED
+      ? null
+      : payload.errorMessage ?? "Lip-sync rendering failed.";
+
+  if (payload.status === TARGET_STATE.COMPLETED) {
+    try {
+      durableDubbedVideoPath = await persistLipSyncOutput({
+        jobId: target.job_id,
+        targetLanguage: target.target_language,
+        sourcePath: payload.dubbedVideoPath!,
+      });
+    } catch (error) {
+      nextTargetStatus = TARGET_STATE.FAILED;
+      completedAt = null;
+      targetErrorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to durably persist lip-sync output.";
+    }
+  }
 
   const { error: updateTargetError } = await supabase
     .from("job_targets")
     .update({
       status: nextTargetStatus,
       dubbed_video_path:
-        payload.status === TARGET_STATE.COMPLETED ? payload.dubbedVideoPath : null,
-      error_message:
-        payload.status === TARGET_STATE.COMPLETED
-          ? null
-          : payload.errorMessage ?? "Lip-sync rendering failed.",
+        nextTargetStatus === TARGET_STATE.COMPLETED ? durableDubbedVideoPath : null,
+      error_message: targetErrorMessage,
       completed_at: completedAt,
       updated_at: new Date().toISOString(),
     })
