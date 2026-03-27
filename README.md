@@ -3,6 +3,15 @@
 Media Translator is a SaaS application for translating video and audio
 content into other languages.
 
+Current repo state:
+
+- web app plus worker are both committed and runnable
+- output modes: `subtitles`, `dubbed_audio`, `lip_sync`
+- source uploads, worker processing, durable artifact persistence, and billing
+  are all wired in the current codebase
+- real OpenAI-backed STT / translation / TTS paths exist, with env-selectable
+  mock fallbacks
+
 ## Documentation
 
 Read these files before making changes:
@@ -79,6 +88,7 @@ Suggested first checks:
    - `worker_heartbeat`
    - `worker_runtime_stopped`
 3. Run `npm run ops:stuck-jobs` if jobs appear to stop making progress.
+4. Run `npm run test:validation` before deployment-facing changes.
 
 ## Validation
 

@@ -146,14 +146,15 @@ Implemented:
 - The worker now stages source files locally before FFmpeg executes, but this
   still depends on local disk availability and correct service-role access.
 - Durable persistence now exists for normalized media, extracted audio,
-  subtitles, and dubbed audio, but lip-sync output durability is still a gap.
+  subtitles, dubbed audio, and lip-sync outputs.
 - Real OpenAI-backed STT, translation, and TTS paths now exist, but provider
   selection still depends on explicit env configuration and lip-sync remains a
-  separate gap.
+  separate, less mature provider slice.
 - Service-role Supabase access is widely used; route boundaries matter.
 - Billing and lip-sync webhooks require externally configured secrets.
 - The committed process model is intentionally lightweight; health checks,
-  supervised restarts, and autoscaling remain deployment-platform concerns.
+  supervised restarts, autoscaling, and alerting remain deployment-platform
+  concerns.
 - Stuck-job visibility is log/script driven rather than automatic remediation.
 
 ## Operational Recommendations
@@ -188,3 +189,5 @@ Still recommended next work:
   platform.
 - Add external metrics/tracing if the deployment platform needs deeper
   observability than structured logs.
+- Add platform-specific rollout/runbook guidance once the target hosting setup
+  is chosen.

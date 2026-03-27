@@ -238,7 +238,7 @@ Must follow credit rules from project docs.
 
 ## T10. Wire dashboard upload flow
 
-Status: [~]
+Status: [x]
 
 Connect the dashboard upload UI to:
 
@@ -255,8 +255,9 @@ Use a simple flow:
 No worker processing yet.
 
 Note:
-- The upload and job-creation flow is wired on `app/page.tsx`.
-- `/dashboard` currently links to that flow instead of hosting it directly.
+- The upload and job-creation flow now runs directly on `/dashboard`.
+- The same shared `UploadJobCard` flow is reused on `app/page.tsx` so both entry
+  points stay aligned.
 
 ---
 
@@ -652,7 +653,7 @@ Update billing page and dashboard to reflect:
 
 ## T37. Improve progress timeline UI
 
-Status: [~]
+Status: [x]
 
 Update job detail page to show:
 
@@ -662,14 +663,15 @@ Update job detail page to show:
 - partial success messaging
 
 Note:
-- A timeline component is implemented and shows current, completed, and terminal states.
-- The job detail page still uses mock job data, so this is only partially complete.
+- The timeline component is implemented and now renders from live job/target data.
+- The job detail page shows current, completed, failure, canceled, and partial
+  success states from the real job record.
 
 ---
 
 ## T38. Add better error messages
 
-Status: [ ]
+Status: [x]
 
 Improve user-facing errors for:
 
@@ -678,11 +680,17 @@ Improve user-facing errors for:
 - pipeline failures
 - lip-sync failures
 
+Note:
+- The dashboard upload flow now distinguishes validation, upload-init, direct
+  upload, and job-creation failures.
+- The job detail page now presents failed, canceled, and partial-success states
+  with clearer user-facing messaging.
+
 ---
 
 ## T39. Add logging helpers
 
-Status: [ ]
+Status: [~]
 
 Create:
 
@@ -690,17 +698,28 @@ Create:
 
 Use for pipeline step logging and debugging.
 
+Note:
+- Logging helpers now exist in `worker/logger.ts` and `lib/jobs/stepLogging.ts`.
+- Structured job/step logging is in place, but the exact `lib/utils/logger.ts`
+  file from the original backlog item was not created.
+
 ---
 
 ## T40. Add basic admin/dev test scripts
 
-Status: [ ]
+Status: [~]
 
 Create scripts under `scripts/` for:
 
 - sample job simulation
 - FFmpeg test
 - pipeline dry run
+
+Note:
+- The repo now includes operational scripts for stuck-job inspection and worker
+  env checks, plus `npm run test:validation` for core outcome coverage.
+- The narrower scripts listed in this original backlog item are still not all
+  present as separate utilities.
 
 ---
 
@@ -718,17 +737,13 @@ When working from this file:
 
 ## Priority Guidance
 
-Highest priority tasks:
+The original foundational priorities are now complete.
 
-1. T1
-2. T2
-3. T8
-4. T9
-5. T11
-6. T12
-7. T14
-8. T15
-9. T16
-10. T17
+Current remaining backlog priorities:
 
-After these are complete, the rest can proceed smoothly.
+1. T4
+2. T39
+3. T40
+
+Beyond this file, the main remaining work is deployment-platform hardening,
+deeper provider quality/fallback work, and broader observability.

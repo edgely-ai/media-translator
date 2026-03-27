@@ -16,8 +16,9 @@ The repository currently contains the application shell, API routes, database
 schema, billing flows, transcript editing, processing-step implementations, and
 a worker runtime, worker handler entry point, source-media staging, and durable
 artifact upload-back to Supabase Storage. It also contains first real OpenAI
-provider paths for STT, translation, and TTS plus committed web/worker process
-packaging.
+provider paths for STT, translation, and TTS, durable lip-sync artifact
+persistence, cancel/retry orchestration, validation tooling, and committed
+web/worker process packaging.
 
 Assumption:
 
@@ -102,7 +103,9 @@ Thin Next.js route handlers in `app/api/*` validate JSON/auth and delegate to
   Required by normalization and audio extraction steps.
 - AI providers
   Abstracted behind `lib/ai/*`. Current code supports real OpenAI-backed STT,
-  translation, and TTS, plus env-selectable `mock` fallbacks.
+  translation, and TTS, plus env-selectable `mock` fallbacks. Lip-sync still
+  uses its separate request/webhook flow and remains the least mature provider
+  slice.
 
 ## Data Flow
 
@@ -128,7 +131,8 @@ Thin Next.js route handlers in `app/api/*` validate JSON/auth and delegate to
    updates job/target rows with storage object paths.
 4. Final status and credit release/finalization are derived by
    `reconcileJobOutputs()`.
-5. Lip-sync completion is expected to arrive later via webhook.
+5. Lip-sync completion arrives later via webhook, which also durably persists
+   the final lip-sync output before reconciliation runs.
 
 ### Billing
 
@@ -157,6 +161,9 @@ Confirmed facts:
   outputs are uploaded back into Supabase Storage.
 - The dashboard and job detail routes now read live job data, while keeping UI
   concerns separate from `lib/` read helpers.
+- Cancel and retry are now implemented as thin route/UI actions over worker-owned
+  orchestration: cancel is cooperative, and retry creates a new job attempt
+  instead of rewinding the original job.
 
 ## Code/Doc Inconsistencies Flagged
 
@@ -166,3 +173,5 @@ Confirmed facts:
 - Existing docs implied the worker lacked repo-committed process packaging, but
   the repo now includes explicit web/worker scripts plus `Procfile.dev` and
   `Procfile`.
+- Existing docs also understated dashboard/job-detail live data, cancellation /
+  retry support, durable lip-sync output persistence, and validation coverage.
