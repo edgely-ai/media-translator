@@ -1,5 +1,17 @@
 import type { CreateJobResponse, OutputMode } from "@/types/jobs";
 
+export type UploadFlowPhase = "upload_init" | "storage_upload" | "job_creation";
+
+export class UploadFlowError extends Error {
+  constructor(
+    public readonly phase: UploadFlowPhase,
+    message: string,
+  ) {
+    super(message);
+    this.name = "UploadFlowError";
+  }
+}
+
 export interface UploadInitClientRequest {
   filename: string;
   mimeType: string;
@@ -56,16 +68,27 @@ export async function requestUploadInit(
   accessToken: string,
   request: UploadInitClientRequest,
 ): Promise<UploadInitClientResponse> {
-  const response = await fetch("/api/uploads/init", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(request),
-  });
+  try {
+    const response = await fetch("/api/uploads/init", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(request),
+    });
 
-  return parseJsonResponse<UploadInitClientResponse>(response);
+    return parseJsonResponse<UploadInitClientResponse>(response);
+  } catch (error) {
+    if (error instanceof UploadFlowError) {
+      throw error;
+    }
+
+    throw new UploadFlowError(
+      "upload_init",
+      error instanceof Error ? error.message : "Failed to initialize upload.",
+    );
+  }
 }
 
 export async function requestJobCreation(
@@ -80,16 +103,27 @@ export async function requestJobCreation(
     targetLanguages: string[];
   },
 ): Promise<CreateJobResponse> {
-  const response = await fetch("/api/jobs/create", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(request),
-  });
+  try {
+    const response = await fetch("/api/jobs/create", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(request),
+    });
 
-  return parseJsonResponse<CreateJobResponse>(response);
+    return parseJsonResponse<CreateJobResponse>(response);
+  } catch (error) {
+    if (error instanceof UploadFlowError) {
+      throw error;
+    }
+
+    throw new UploadFlowError(
+      "job_creation",
+      error instanceof Error ? error.message : "Failed to create job.",
+    );
+  }
 }
 
 export async function startUploadFlow(
@@ -102,7 +136,14 @@ export async function startUploadFlow(
     durationSeconds: input.durationSeconds,
   });
 
-  await input.uploadFile(uploadInit.storageBucket, uploadInit.storagePath, input.file);
+  try {
+    await input.uploadFile(uploadInit.storageBucket, uploadInit.storagePath, input.file);
+  } catch (error) {
+    throw new UploadFlowError(
+      "storage_upload",
+      error instanceof Error ? error.message : "Failed to upload the source file.",
+    );
+  }
 
   return requestJobCreation(input.accessToken, {
     storageBucket: uploadInit.storageBucket,
@@ -113,4 +154,8 @@ export async function startUploadFlow(
     outputMode: input.outputMode,
     targetLanguages: input.targetLanguages,
   });
+}
+
+export function isUploadFlowError(error: unknown): error is UploadFlowError {
+  return error instanceof UploadFlowError;
 }

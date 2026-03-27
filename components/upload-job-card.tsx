@@ -6,6 +6,11 @@ import { useState } from "react";
 
 import { getBrowserSession, getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { startUploadFlow } from "@/lib/storage/upload-flow";
+import {
+  getUploadErrorDisplay,
+  getUploadValidationError,
+  type UploadErrorDisplay,
+} from "@/lib/ui/errorMessages";
 import type { CreateJobResponse, OutputMode } from "@/types/jobs";
 
 const OUTPUT_MODES: OutputMode[] = ["subtitles", "dubbed_audio", "lip_sync"];
@@ -24,14 +29,6 @@ interface UploadJobCardProps {
   onJobCreated?: (job: CreateJobResponse) => void;
 }
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Something went wrong while creating the job.";
-}
-
 export function UploadJobCard({
   title,
   description,
@@ -45,7 +42,7 @@ export function UploadJobCard({
   const [targetLanguageInput, setTargetLanguageInput] = useState("fr, es");
   const [isUploading, setIsUploading] = useState(false);
   const [isCreatingJob, setIsCreatingJob] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UploadErrorDisplay | null>(null);
   const [success, setSuccess] = useState<CreateJobResponse | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -53,22 +50,27 @@ export function UploadJobCard({
     setError(null);
     setSuccess(null);
 
-    if (!file) {
-      setError("Choose a media file before creating a job.");
+    const validationError = getUploadValidationError({
+      file,
+      durationSeconds,
+      outputMode,
+      targetLanguageInput,
+    });
+
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
     const parsedDuration = Number(durationSeconds);
-
-    if (!Number.isFinite(parsedDuration) || parsedDuration <= 0) {
-      setError("Duration must be a positive number of seconds.");
-      return;
-    }
-
     const targetLanguages = parseTargetLanguages(targetLanguageInput);
+    const selectedFile = file;
 
-    if (targetLanguages.length === 0) {
-      setError("Enter at least one target language.");
+    if (!selectedFile) {
+      setError({
+        title: "Choose a source file",
+        message: "Select an audio or video file before creating a job.",
+      });
       return;
     }
 
@@ -76,7 +78,11 @@ export function UploadJobCard({
       const session = await getBrowserSession();
 
       if (!session?.access_token) {
-        throw new Error("You must be signed in before uploading media.");
+        setError({
+          title: "Sign in required",
+          message: "You must be signed in before uploading media.",
+        });
+        return;
       }
 
       const supabase = getSupabaseBrowserClient();
@@ -84,7 +90,7 @@ export function UploadJobCard({
 
       const createdJob = await startUploadFlow({
         accessToken: session.access_token,
-        file,
+        file: selectedFile,
         durationSeconds: parsedDuration,
         outputMode,
         targetLanguages,
@@ -109,7 +115,7 @@ export function UploadJobCard({
       onJobCreated?.(createdJob);
       router.refresh();
     } catch (submissionError) {
-      setError(getErrorMessage(submissionError));
+      setError(getUploadErrorDisplay(submissionError));
     } finally {
       setIsUploading(false);
       setIsCreatingJob(false);
@@ -227,8 +233,8 @@ export function UploadJobCard({
 
           {error ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
-              <p className="font-medium">Error</p>
-              <p className="mt-1">{error}</p>
+              <p className="font-medium">{error.title}</p>
+              <p className="mt-1">{error.message}</p>
             </div>
           ) : null}
 

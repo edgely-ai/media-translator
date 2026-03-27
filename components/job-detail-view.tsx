@@ -6,6 +6,10 @@ import { useEffect, useState } from "react";
 import { getBrowserSession } from "@/lib/supabase/browser";
 import { JobProgressTimeline } from "@/components/job-progress-timeline";
 import type { JobDetailView as JobDetailViewModel } from "@/lib/jobs/readJobViews";
+import {
+  getJobOutcomeMessage,
+  getTargetFailureMessage,
+} from "@/lib/ui/errorMessages";
 
 interface JobDetailViewProps {
   jobId: string;
@@ -63,6 +67,21 @@ function getTargetStatusTone(status: JobDetailViewModel["targets"][number]["stat
       return "border-red-200 bg-red-50 text-red-700";
     default:
       return "border-stone-200 bg-stone-50 text-stone-700";
+  }
+}
+
+function getOutcomeToneClass(
+  tone: "success" | "warning" | "error" | "info",
+): string {
+  switch (tone) {
+    case "success":
+      return "border-emerald-200 bg-emerald-50 text-emerald-900";
+    case "warning":
+      return "border-amber-200 bg-amber-50 text-amber-900";
+    case "error":
+      return "border-red-200 bg-red-50 text-red-800";
+    default:
+      return "border-sky-200 bg-sky-50 text-sky-900";
   }
 }
 
@@ -151,6 +170,8 @@ export function JobDetailView({ jobId }: JobDetailViewProps) {
     );
   }
 
+  const outcomeMessage = getJobOutcomeMessage(job);
+
   return (
     <>
       <section className="rounded-[2rem] border border-stone-200/70 bg-white/90 p-8 shadow-[0_24px_80px_rgba(66,50,20,0.08)] backdrop-blur">
@@ -169,6 +190,17 @@ export function JobDetailView({ jobId }: JobDetailViewProps) {
           </span>
         </div>
       </section>
+
+      {outcomeMessage ? (
+        <section
+          className={`rounded-[2rem] border p-6 shadow-[0_12px_40px_rgba(30,41,59,0.06)] ${getOutcomeToneClass(outcomeMessage.tone)}`}
+        >
+          <p className="text-sm font-semibold uppercase tracking-[0.2em]">
+            {outcomeMessage.title}
+          </p>
+          <p className="mt-2 text-sm leading-7">{outcomeMessage.message}</p>
+        </section>
+      ) : null}
 
       <section className="grid gap-6 lg:grid-cols-[1fr_0.95fr_0.95fr]">
         <article className="rounded-[2rem] border border-stone-200 bg-white p-8 shadow-[0_20px_60px_rgba(30,41,59,0.08)]">
@@ -237,7 +269,11 @@ export function JobDetailView({ jobId }: JobDetailViewProps) {
             {job.errorMessage ? (
               <div>
                 <dt className="font-medium text-red-700">Latest job error</dt>
-                <dd className="text-red-600">{job.errorMessage}</dd>
+                <dd className="text-red-600">
+                  {job.status === "partial_success"
+                    ? `Some outputs are still available. ${job.errorMessage}`
+                    : job.errorMessage}
+                </dd>
               </div>
             ) : null}
           </dl>
@@ -321,7 +357,9 @@ export function JobDetailView({ jobId }: JobDetailViewProps) {
                       {target.errorMessage ? (
                         <div>
                           <dt className="font-medium text-red-700">Latest error</dt>
-                          <dd className="text-red-600">{target.errorMessage}</dd>
+                          <dd className="text-red-600">
+                            {getTargetFailureMessage(target) ?? target.errorMessage}
+                          </dd>
                         </div>
                       ) : null}
                     </dl>
@@ -380,7 +418,11 @@ export function JobDetailView({ jobId }: JobDetailViewProps) {
 
                     {!target.subtitleUrl && !target.dubbedAudioUrl && !target.dubbedVideoUrl ? (
                       <div className="rounded-full border border-dashed border-stone-300 px-4 py-3 text-sm text-stone-500">
-                        No durable artifacts are available for this target yet
+                        {target.status === "failed"
+                          ? "No usable artifacts were produced for this target."
+                          : target.status === "lipsync_requested"
+                            ? "Lip-sync is still rendering for this target."
+                            : "No durable artifacts are available for this target yet."}
                       </div>
                     ) : null}
                   </div>
