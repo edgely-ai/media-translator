@@ -77,10 +77,13 @@ Database:
 Worker runtime:
 
 - `WORKER_POLL_INTERVAL_MS`
+- `WORKER_HEARTBEAT_INTERVAL_MS`
 - `WORKER_QUEUED_SCAN_LIMIT`
 - `WORKER_OUTPUT_ROOT_DIR`
 - `WORKER_STAGING_ROOT`
 - `WORKER_LIPSYNC_CALLBACK_URL`
+- `WORKER_STUCK_JOB_THRESHOLD_MS`
+- `WORKER_STUCK_JOB_SAMPLE_LIMIT`
 
 ## Hosting Assumptions
 
@@ -91,6 +94,7 @@ Confirmed facts:
 - Needs server-side access to Supabase service-role credentials
 - Needs outbound network access to Supabase and Stripe
 - API routes depend on bearer-token auth from Supabase browser sessions
+- Exposes a lightweight health route at `/api/health`
 
 ### Processing Runtime
 
@@ -122,6 +126,8 @@ Expected behavior:
 - The worker polls claimable jobs, stages source media locally, runs processing,
   uploads durable artifacts back to Supabase Storage, and then reconciles final
   job state.
+- The worker emits structured lifecycle logs and periodic heartbeat logs while
+  it is running.
 
 ## Worker / Function Topology
 
@@ -148,6 +154,7 @@ Implemented:
 - Billing and lip-sync webhooks require externally configured secrets.
 - The committed process model is intentionally lightweight; health checks,
   supervised restarts, and autoscaling remain deployment-platform concerns.
+- Stuck-job visibility is log/script driven rather than automatic remediation.
 
 ## Operational Recommendations
 
@@ -164,10 +171,20 @@ Startup and shutdown expectations:
 - The worker is a long-lived poller, not a route-triggered job runner.
 - The runtime already handles `SIGINT` and `SIGTERM`, stops polling, closes the
   Postgres pool, and exits after the active loop finishes.
+- The runtime emits `worker_runtime_started`, periodic `worker_heartbeat`, and
+  `worker_runtime_stopped` events.
+
+Health and routine checks:
+
+- Web liveness: `GET /api/health`
+- Worker env summary: `npm run ops:check-worker-env`
+- Potentially stuck jobs: `npm run ops:stuck-jobs`
+- Heartbeat warnings for aged active jobs are emitted from the worker when the
+  configured stuck-job threshold is exceeded.
 
 Still recommended next work:
 
-- Add durable persistence for lip-sync outputs.
 - Add health checks and service supervision guidance for the chosen deployment
   platform.
-- Add retry/cancellation orchestration when those work packages are prioritized.
+- Add external metrics/tracing if the deployment platform needs deeper
+  observability than structured logs.

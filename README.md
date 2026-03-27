@@ -44,10 +44,13 @@ Required shared environment for the web app and worker:
 Worker-specific environment used by the current runtime:
 
 - `WORKER_POLL_INTERVAL_MS`
+- `WORKER_HEARTBEAT_INTERVAL_MS`
 - `WORKER_QUEUED_SCAN_LIMIT`
 - `WORKER_OUTPUT_ROOT_DIR`
 - `WORKER_STAGING_ROOT`
 - `WORKER_LIPSYNC_CALLBACK_URL`
+- `WORKER_STUCK_JOB_THRESHOLD_MS`
+- `WORKER_STUCK_JOB_SAMPLE_LIMIT`
 
 Provider selection is env-driven. For the first real provider path, configure:
 
@@ -59,6 +62,24 @@ Provider selection is env-driven. For the first real provider path, configure:
 The worker runtime also requires `ffmpeg` on `PATH` plus writable local staging
 and output directories.
 
+## Operations
+
+Basic production-hardening tooling is committed in the repo:
+
+- Web health endpoint: `GET /api/health`
+- Worker heartbeat logs: emitted periodically while the worker is running
+- Stuck-job report: `npm run ops:stuck-jobs`
+- Worker env sanity check: `npm run ops:check-worker-env`
+
+Suggested first checks:
+
+1. Hit `http://localhost:3000/api/health` to confirm the web service is alive.
+2. Start the worker and watch for:
+   - `worker_runtime_started`
+   - `worker_heartbeat`
+   - `worker_runtime_stopped`
+3. Run `npm run ops:stuck-jobs` if jobs appear to stop making progress.
+
 ## Scripts
 
 - `npm run dev` starts the local development server
@@ -68,4 +89,6 @@ and output directories.
 - `npm run start` runs the production server
 - `npm run worker` runs the worker service
 - `npm run worker:once` runs a single worker pickup/execution cycle
+- `npm run ops:stuck-jobs` reports potentially stuck active jobs
+- `npm run ops:check-worker-env` reports lightweight worker runtime checks
 - `npm run lint` runs ESLint

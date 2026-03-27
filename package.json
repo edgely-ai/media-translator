@@ -10,7 +10,9 @@
     "start": "next start",
     "lint": "eslint",
     "worker": "tsx worker/main.ts",
-    "worker:once": "tsx worker/main.ts --once"
+    "worker:once": "tsx worker/main.ts --once",
+    "ops:stuck-jobs": "tsx scripts/check-stuck-jobs.ts",
+    "ops:check-worker-env": "tsx scripts/check-worker-env.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.2",

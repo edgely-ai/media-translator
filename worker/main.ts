@@ -41,6 +41,21 @@ async function main(): Promise<void> {
     outputRootDir: process.env.WORKER_OUTPUT_ROOT_DIR?.trim() || "media",
     lipSyncCallbackUrl: process.env.WORKER_LIPSYNC_CALLBACK_URL?.trim() || null,
     runOnce: args.has("--once") || parseBooleanEnv("WORKER_RUN_ONCE"),
+    heartbeatIntervalMs: parsePositiveIntegerArg(
+      process.env.WORKER_HEARTBEAT_INTERVAL_MS,
+      60_000,
+      "WORKER_HEARTBEAT_INTERVAL_MS",
+    ),
+    stuckJobThresholdMs: parsePositiveIntegerArg(
+      process.env.WORKER_STUCK_JOB_THRESHOLD_MS,
+      900_000,
+      "WORKER_STUCK_JOB_THRESHOLD_MS",
+    ),
+    stuckJobSampleLimit: parsePositiveIntegerArg(
+      process.env.WORKER_STUCK_JOB_SAMPLE_LIMIT,
+      5,
+      "WORKER_STUCK_JOB_SAMPLE_LIMIT",
+    ),
   });
 }
 

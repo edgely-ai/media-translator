@@ -1,10 +1,13 @@
 import { closePostgresPool, withPostgresClient } from "@/lib/db/postgres";
+import { getPostgresQueryExecutor } from "@/lib/db/postgres";
 import {
   claimNextCreatedJobForProcessing,
   claimNextQueuedJobForProcessing,
   releaseJobExecutionLock,
 } from "@/lib/jobs/enqueueJob";
 import type { PostgresTransactionExecutor } from "@/lib/db/postgres";
+import { listPotentiallyStuckJobs } from "@/lib/ops/stuckJobs";
+import { getWorkerRuntimeChecks } from "@/lib/ops/workerRuntimeChecks";
 import { processMediaJob } from "@/worker/handlers/process-media-job";
 import { logWorkerEvent } from "@/worker/logger";
 
@@ -14,6 +17,9 @@ export interface WorkerRuntimeOptions {
   outputRootDir?: string;
   lipSyncCallbackUrl?: string | null;
   runOnce?: boolean;
+  heartbeatIntervalMs?: number;
+  stuckJobThresholdMs?: number;
+  stuckJobSampleLimit?: number;
 }
 
 function sleep(milliseconds: number): Promise<void> {
@@ -100,10 +106,75 @@ async function executeClaimedJob(
   }
 }
 
+async function emitWorkerHeartbeatIfDue(params: {
+  lastHeartbeatAt: number;
+  heartbeatIntervalMs: number;
+  startedAt: number;
+  totalPolls: number;
+  idlePollsSinceHeartbeat: number;
+  jobsProcessedSinceHeartbeat: number;
+  consecutiveIterationErrors: number;
+  stuckJobThresholdMs: number;
+  stuckJobSampleLimit: number;
+}): Promise<number> {
+  if (Date.now() - params.lastHeartbeatAt < params.heartbeatIntervalMs) {
+    return params.lastHeartbeatAt;
+  }
+
+  const stuckJobs = await listPotentiallyStuckJobs(getPostgresQueryExecutor(), {
+    olderThanMs: params.stuckJobThresholdMs,
+    limit: params.stuckJobSampleLimit,
+  }).catch((error) => {
+    logWorkerEvent("warn", "worker_stuck_job_check_failed", {
+      error_message:
+        error instanceof Error
+          ? error.message
+          : "Failed to query potentially stuck jobs.",
+    });
+
+    return [];
+  });
+
+  logWorkerEvent("info", "worker_heartbeat", {
+    uptime_ms: Date.now() - params.startedAt,
+    total_polls: params.totalPolls,
+    idle_polls_since_heartbeat: params.idlePollsSinceHeartbeat,
+    jobs_processed_since_heartbeat: params.jobsProcessedSinceHeartbeat,
+    consecutive_iteration_errors: params.consecutiveIterationErrors,
+    stuck_job_count: stuckJobs.length,
+    stuck_job_ids: stuckJobs.map((job) => job.id),
+  });
+
+  if (stuckJobs.length > 0) {
+    logWorkerEvent("warn", "worker_stuck_jobs_detected", {
+      threshold_ms: params.stuckJobThresholdMs,
+      sample_limit: params.stuckJobSampleLimit,
+      jobs: stuckJobs.map((job) => ({
+        job_id: job.id,
+        status: job.status,
+        age_seconds: job.age_seconds,
+        cancel_requested_at: job.cancel_requested_at,
+      })),
+    });
+  }
+
+  return Date.now();
+}
+
 export async function runWorkerRuntime(
   options: WorkerRuntimeOptions,
 ): Promise<void> {
   let shouldStop = false;
+  const startedAt = Date.now();
+  const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 60_000;
+  const stuckJobThresholdMs = options.stuckJobThresholdMs ?? 15 * 60 * 1000;
+  const stuckJobSampleLimit = options.stuckJobSampleLimit ?? 5;
+  let lastHeartbeatAt = Date.now();
+  let totalPolls = 0;
+  let idlePollsSinceHeartbeat = 0;
+  let jobsProcessedSinceHeartbeat = 0;
+  let consecutiveIterationErrors = 0;
+  const runtimeChecks = getWorkerRuntimeChecks();
 
   const stop = (signal: NodeJS.Signals) => {
     shouldStop = true;
@@ -117,19 +188,24 @@ export async function runWorkerRuntime(
 
   logWorkerEvent("info", "worker_runtime_started", {
     poll_interval_ms: options.pollIntervalMs,
+    heartbeat_interval_ms: heartbeatIntervalMs,
+    stuck_job_threshold_ms: stuckJobThresholdMs,
+    stuck_job_sample_limit: stuckJobSampleLimit,
     queued_scan_limit: options.queuedScanLimit,
     output_root_dir: options.outputRootDir ?? "media",
     run_once: options.runOnce ?? false,
+    runtime_checks: runtimeChecks,
     limitations: [
-      "lip-sync output durability is still unresolved",
-      "retry and cancellation orchestration are still unresolved",
+      "automatic retry/backoff is still unresolved",
       "worker requires ffmpeg plus writable local staging/output directories",
+      "monitoring remains log-driven without an external metrics backend",
     ],
   });
 
   try {
     while (!shouldStop) {
       let claimedJob: Awaited<ReturnType<typeof claimNextJobForExecution>> = null;
+      totalPolls += 1;
 
       try {
         claimedJob = await withPostgresClient(async (db) => {
@@ -149,12 +225,16 @@ export async function runWorkerRuntime(
 
           return nextJob;
         });
+        consecutiveIterationErrors = 0;
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "Worker loop iteration failed.";
+        consecutiveIterationErrors += 1;
 
         logWorkerEvent("error", "worker_iteration_failed", {
           error_message: errorMessage,
+          consecutive_iteration_errors: consecutiveIterationErrors,
+          total_polls: totalPolls,
         });
 
         if (options.runOnce) {
@@ -166,9 +246,25 @@ export async function runWorkerRuntime(
       }
 
       if (!claimedJob) {
-        logWorkerEvent("info", "worker_poll_idle", {
-          poll_interval_ms: options.pollIntervalMs,
+        idlePollsSinceHeartbeat += 1;
+
+        const heartbeatAt = await emitWorkerHeartbeatIfDue({
+          lastHeartbeatAt,
+          heartbeatIntervalMs,
+          startedAt,
+          totalPolls,
+          idlePollsSinceHeartbeat,
+          jobsProcessedSinceHeartbeat,
+          consecutiveIterationErrors,
+          stuckJobThresholdMs,
+          stuckJobSampleLimit,
         });
+
+        if (heartbeatAt !== lastHeartbeatAt) {
+          lastHeartbeatAt = heartbeatAt;
+          idlePollsSinceHeartbeat = 0;
+          jobsProcessedSinceHeartbeat = 0;
+        }
 
         if (options.runOnce) {
           break;
@@ -176,6 +272,26 @@ export async function runWorkerRuntime(
 
         await sleep(options.pollIntervalMs);
         continue;
+      }
+
+      jobsProcessedSinceHeartbeat += 1;
+
+      const heartbeatAt = await emitWorkerHeartbeatIfDue({
+        lastHeartbeatAt,
+        heartbeatIntervalMs,
+        startedAt,
+        totalPolls,
+        idlePollsSinceHeartbeat,
+        jobsProcessedSinceHeartbeat,
+        consecutiveIterationErrors,
+        stuckJobThresholdMs,
+        stuckJobSampleLimit,
+      });
+
+      if (heartbeatAt !== lastHeartbeatAt) {
+        lastHeartbeatAt = heartbeatAt;
+        idlePollsSinceHeartbeat = 0;
+        jobsProcessedSinceHeartbeat = 0;
       }
 
       if (options.runOnce) {
@@ -186,6 +302,10 @@ export async function runWorkerRuntime(
     process.removeListener("SIGINT", stop);
     process.removeListener("SIGTERM", stop);
     await closePostgresPool();
-    logWorkerEvent("info", "worker_runtime_stopped");
+    logWorkerEvent("info", "worker_runtime_stopped", {
+      uptime_ms: Date.now() - startedAt,
+      total_polls: totalPolls,
+      consecutive_iteration_errors: consecutiveIterationErrors,
+    });
   }
 }
