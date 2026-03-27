@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:validation": "tsx --test tests/validation/**/*.test.ts",
     "worker": "tsx worker/main.ts",
     "worker:once": "tsx worker/main.ts --once",
     "ops:stuck-jobs": "tsx scripts/check-stuck-jobs.ts",

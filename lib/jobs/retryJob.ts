@@ -3,7 +3,10 @@ import { queryOne } from "@/lib/db/client";
 import { getPostgresQueryExecutor } from "@/lib/db/postgres";
 import { getJobById } from "@/lib/db/jobs";
 import { listTargetsByJobId } from "@/lib/db/targets";
-import { JOB_STATE } from "@/lib/jobs/jobStates";
+import {
+  getRetryTargetLanguages,
+  isRetryableStatus,
+} from "@/lib/jobs/retryPlanning";
 import type { JobStatus, RetryJobResponse } from "@/types/jobs";
 
 type RouteErrorStatus = 403 | 404 | 409 | 500;
@@ -26,23 +29,6 @@ interface JobCreationRpcResult {
   estimated_credits: number;
   reserved_credits: number;
   target_count: number;
-}
-
-function isRetryableStatus(status: JobStatus): boolean {
-  return status === JOB_STATE.FAILED || status === JOB_STATE.PARTIAL_SUCCESS;
-}
-
-function getRetryTargetLanguages(
-  status: JobStatus,
-  targets: Awaited<ReturnType<typeof listTargetsByJobId>>,
-): string[] {
-  if (status === JOB_STATE.FAILED) {
-    return targets.map((target) => target.target_language);
-  }
-
-  return targets
-    .filter((target) => target.status === "failed")
-    .map((target) => target.target_language);
 }
 
 async function createJobWithReservation(params: {

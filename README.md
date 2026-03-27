@@ -80,6 +80,23 @@ Suggested first checks:
    - `worker_runtime_stopped`
 3. Run `npm run ops:stuck-jobs` if jobs appear to stop making progress.
 
+## Validation
+
+Run the focused outcome validation suite with:
+
+```bash
+npm run test:validation
+```
+
+This covers the core job outcome classes without requiring real provider
+credentials or live external services:
+
+- `completed`
+- `partial_success`
+- `failed`
+- `canceled`
+- retry as a new attempt
+
 ## Scripts
 
 - `npm run dev` starts the local development server
