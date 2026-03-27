@@ -2,7 +2,7 @@ import {
   assertOpenAIResponse,
   getOpenAIBaseUrl,
   getOpenAITextHeaders,
-  OpenAIProviderConfigurationError,
+  requireConfiguredOpenAIModel,
 } from "@/lib/ai/openai";
 import type {
   TranslationResult,
@@ -37,24 +37,16 @@ interface OpenAIChatCompletionResponse {
   }>;
 }
 
-interface TranslationPayload {
-  segments?: Array<{
-    segmentIndex?: number;
-    translatedText?: string;
-  }>;
-}
-
 class OpenAITranslationProvider implements TranslationProvider {
   private readonly model: string;
 
   constructor() {
-    this.model = (process.env.OPENAI_TRANSLATION_MODEL ?? "gpt-4o-mini").trim();
-
-    if (!this.model) {
-      throw new OpenAIProviderConfigurationError(
-        "OPENAI_TRANSLATION_MODEL must be set when TRANSLATION_PROVIDER=openai.",
-      );
-    }
+    this.model = requireConfiguredOpenAIModel({
+      envVar: "OPENAI_TRANSLATION_MODEL",
+      defaultValue: "gpt-4o-mini",
+      selectedProvider: "TRANSLATION_PROVIDER",
+      purpose: "translation",
+    });
   }
 
   async translate(input: TranslateInput): Promise<TranslationResult> {
@@ -123,31 +115,71 @@ function buildDeveloperInstruction(input: TranslateInput): string {
   ].join(" ");
 }
 
-function parseTranslationPayload(content: string): TranslationPayload {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseTranslationPayload(content: string): Record<string, unknown> {
   try {
-    return JSON.parse(content) as TranslationPayload;
+    const parsed = JSON.parse(content) as unknown;
+
+    if (!isRecord(parsed)) {
+      throw new Error("OpenAI translation returned a non-object JSON payload.");
+    }
+
+    return parsed;
   } catch {
     throw new Error("OpenAI translation returned invalid JSON.");
   }
 }
 
 function normalizeTranslatedSegments(
-  payload: TranslationPayload,
+  payload: Record<string, unknown>,
   expectedCount: number,
 ): TranslationSegmentResult[] {
-  if (!Array.isArray(payload.segments) || payload.segments.length !== expectedCount) {
+  const keys = Object.keys(payload);
+
+  if (keys.length !== 1 || keys[0] !== "segments") {
     throw new Error(
-      `OpenAI translation returned ${payload.segments?.length ?? 0} segments; expected ${expectedCount}.`,
+      "OpenAI translation response must contain exactly one top-level key named segments.",
     );
   }
 
-  return payload.segments.map((segment, index) => {
+  const rawSegments = payload.segments;
+
+  if (!Array.isArray(rawSegments) || rawSegments.length !== expectedCount) {
+    throw new Error(
+      `OpenAI translation returned ${Array.isArray(rawSegments) ? rawSegments.length : 0} segments; expected ${expectedCount}.`,
+    );
+  }
+
+  return rawSegments.map((segment, index) => {
+    if (!isRecord(segment)) {
+      throw new Error(
+        `OpenAI translation returned a non-object segment at index ${index}.`,
+      );
+    }
+
+    const segmentKeys = Object.keys(segment).sort();
+    const expectedKeys = ["segmentIndex", "translatedText"];
+
+    if (
+      segmentKeys.length !== expectedKeys.length ||
+      !expectedKeys.every((key, keyIndex) => segmentKeys[keyIndex] === key)
+    ) {
+      throw new Error(
+        `OpenAI translation returned unexpected fields for segment ${index}.`,
+      );
+    }
+
     if (
       segment.segmentIndex !== index ||
       typeof segment.translatedText !== "string" ||
       !segment.translatedText.trim()
     ) {
-      throw new Error("OpenAI translation returned an invalid translated segment.");
+      throw new Error(
+        `OpenAI translation returned an invalid translated segment at index ${index}.`,
+      );
     }
 
     return {
@@ -215,6 +247,10 @@ export async function translateSegments(
     throw new Error(
       "Translation segments must use sequential indexes starting at 0 and contain non-empty text.",
     );
+  }
+
+  if (!input.targetLanguage.trim()) {
+    throw new Error("Translation requires a non-empty target language.");
   }
 
   const provider = getTranslationProvider();

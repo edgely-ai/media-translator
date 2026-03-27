@@ -20,10 +20,66 @@ function getOpenAIApiKey(): string {
 }
 
 export function getOpenAIBaseUrl(): string {
-  return (
+  const configuredBaseUrl =
     process.env.OPENAI_BASE_URL?.trim().replace(/\/+$/, "") ??
-    DEFAULT_OPENAI_BASE_URL
-  );
+    DEFAULT_OPENAI_BASE_URL;
+
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(configuredBaseUrl);
+  } catch {
+    throw new OpenAIProviderConfigurationError(
+      "OPENAI_BASE_URL must be a valid absolute URL when provided.",
+    );
+  }
+
+  if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+    throw new OpenAIProviderConfigurationError(
+      "OPENAI_BASE_URL must use http or https.",
+    );
+  }
+
+  return parsedUrl.toString().replace(/\/+$/, "");
+}
+
+export function requireConfiguredOpenAIModel(params: {
+  envVar: string;
+  defaultValue: string;
+  selectedProvider: string;
+  purpose: "translation" | "tts";
+}): string {
+  const model = (process.env[params.envVar] ?? params.defaultValue).trim();
+
+  if (!model) {
+    throw new OpenAIProviderConfigurationError(
+      `${params.envVar} must be set when ${params.selectedProvider}=openai.`,
+    );
+  }
+
+  const normalizedModel = model.toLowerCase();
+
+  if (params.purpose === "translation") {
+    if (
+      normalizedModel.includes("whisper") ||
+      normalizedModel.includes("tts") ||
+      normalizedModel.includes("audio")
+    ) {
+      throw new OpenAIProviderConfigurationError(
+        `${params.envVar} must reference a text/chat model when ${params.selectedProvider}=openai.`,
+      );
+    }
+  }
+
+  if (params.purpose === "tts") {
+    if (!normalizedModel.includes("tts")) {
+      throw new OpenAIProviderConfigurationError(
+        `${params.envVar} must reference a TTS-capable model when ${params.selectedProvider}=openai.`,
+      );
+    }
+  }
+
+  return model;
 }
 
 export function getOpenAITextHeaders(): Headers {

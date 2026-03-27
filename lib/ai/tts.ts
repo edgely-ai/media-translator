@@ -4,6 +4,7 @@ import {
   getOpenAIRequestId,
   getOpenAITextHeaders,
   OpenAIProviderConfigurationError,
+  requireConfiguredOpenAIModel,
 } from "@/lib/ai/openai";
 import type { TTSResult, TTSSegmentInput } from "@/types/audio";
 
@@ -27,8 +28,6 @@ export class TTSProviderNotConfiguredError extends Error {
 const MOCK_SAMPLE_RATE_HZ = 16_000;
 const MOCK_CHANNELS = 1;
 const MOCK_BITS_PER_SAMPLE = 16;
-const OPENAI_WAV_FALLBACK_SAMPLE_RATE_HZ = 24_000;
-const OPENAI_WAV_FALLBACK_CHANNELS = 1;
 
 function getConfiguredProviderName(): string {
   return (process.env.TTS_PROVIDER ?? "").trim().toLowerCase();
@@ -108,14 +107,13 @@ class OpenAITTSProvider implements TTSProvider {
   private readonly voice: string;
 
   constructor() {
-    this.model = (process.env.OPENAI_TTS_MODEL ?? "gpt-4o-mini-tts").trim();
+    this.model = requireConfiguredOpenAIModel({
+      envVar: "OPENAI_TTS_MODEL",
+      defaultValue: "gpt-4o-mini-tts",
+      selectedProvider: "TTS_PROVIDER",
+      purpose: "tts",
+    });
     this.voice = (process.env.OPENAI_TTS_VOICE ?? "coral").trim();
-
-    if (!this.model) {
-      throw new OpenAIProviderConfigurationError(
-        "OPENAI_TTS_MODEL must be set when TTS_PROVIDER=openai.",
-      );
-    }
 
     if (!this.voice) {
       throw new OpenAIProviderConfigurationError(
@@ -125,6 +123,12 @@ class OpenAITTSProvider implements TTSProvider {
   }
 
   async synthesize(input: SynthesizeSpeechInput): Promise<TTSResult> {
+    const speechInput = buildSpeechInputText(input.segments);
+
+    if (!speechInput) {
+      throw new Error("Speech synthesis requires at least one segment with usable text.");
+    }
+
     const response = await assertOpenAIResponse(
       await fetch(`${getOpenAIBaseUrl()}/audio/speech`, {
         method: "POST",
@@ -132,7 +136,7 @@ class OpenAITTSProvider implements TTSProvider {
         body: JSON.stringify({
           model: this.model,
           voice: this.voice,
-          input: buildSpeechInputText(input.segments),
+          input: speechInput,
           instructions: buildSpeechInstructions(input),
           response_format: "wav",
         }),
@@ -143,15 +147,18 @@ class OpenAITTSProvider implements TTSProvider {
     const audio = new Uint8Array(audioBuffer);
     const wavMetadata = parseWavMetadata(audio);
 
+    if (!wavMetadata) {
+      throw new Error("OpenAI TTS returned invalid or unsupported WAV audio.");
+    }
+
     return {
       provider: "openai",
       providerResponseId: getOpenAIRequestId(response),
       targetLanguage: input.targetLanguage,
       mimeType: "audio/wav",
       format: "wav",
-      sampleRateHz:
-        wavMetadata?.sampleRateHz ?? OPENAI_WAV_FALLBACK_SAMPLE_RATE_HZ,
-      channels: wavMetadata?.channels ?? OPENAI_WAV_FALLBACK_CHANNELS,
+      sampleRateHz: wavMetadata.sampleRateHz,
+      channels: wavMetadata.channels,
       audio,
     };
   }
@@ -180,7 +187,7 @@ function buildSpeechInstructions(input: SynthesizeSpeechInput): string {
 function parseWavMetadata(
   audio: Uint8Array,
 ): { sampleRateHz: number; channels: number } | null {
-  if (audio.byteLength < 28) {
+  if (audio.byteLength < 44) {
     return null;
   }
 
@@ -194,9 +201,46 @@ function parseWavMetadata(
     return null;
   }
 
+  const fmtChunk =
+    String.fromCharCode(audio[12], audio[13], audio[14], audio[15]) === "fmt ";
+
+  if (!fmtChunk) {
+    return null;
+  }
+
+  const audioFormat = view.getUint16(20, true);
+  const channels = view.getUint16(22, true);
+  const sampleRateHz = view.getUint32(24, true);
+  const bitsPerSample = view.getUint16(34, true);
+  const dataHeaderOffset = 36;
+  const dataChunk =
+    String.fromCharCode(
+      audio[dataHeaderOffset],
+      audio[dataHeaderOffset + 1],
+      audio[dataHeaderOffset + 2],
+      audio[dataHeaderOffset + 3],
+    ) === "data";
+
+  if (!dataChunk) {
+    return null;
+  }
+
+  const dataSize = view.getUint32(40, true);
+
+  if (
+    (audioFormat !== 1 && audioFormat !== 3) ||
+    channels <= 0 ||
+    sampleRateHz <= 0 ||
+    bitsPerSample <= 0 ||
+    dataSize <= 0 ||
+    audio.byteLength < 44 + dataSize
+  ) {
+    return null;
+  }
+
   return {
-    channels: view.getUint16(22, true),
-    sampleRateHz: view.getUint32(24, true),
+    channels,
+    sampleRateHz,
   };
 }
 
@@ -243,9 +287,34 @@ export function getTTSProvider(): TTSProvider {
 export async function synthesizeSpeech(
   input: SynthesizeSpeechInput,
 ): Promise<TTSResult> {
+  if (!input.targetLanguage.trim()) {
+    throw new Error("Speech synthesis requires a non-empty target language.");
+  }
+
   validateSegments(input.segments);
 
   const provider = getTTSProvider();
+  const result = await provider.synthesize(input);
 
-  return provider.synthesize(input);
+  if (!result.audio || result.audio.byteLength === 0) {
+    throw new Error("Speech synthesis returned empty audio bytes.");
+  }
+
+  if (result.format !== "wav" || result.mimeType !== "audio/wav") {
+    throw new Error("Speech synthesis returned an unsupported audio format.");
+  }
+
+  if (!parseWavMetadata(result.audio)) {
+    throw new Error("Speech synthesis returned invalid WAV audio.");
+  }
+
+  if (!Number.isInteger(result.sampleRateHz) || result.sampleRateHz <= 0) {
+    throw new Error("Speech synthesis returned an invalid sample rate.");
+  }
+
+  if (!Number.isInteger(result.channels) || result.channels <= 0) {
+    throw new Error("Speech synthesis returned an invalid channel count.");
+  }
+
+  return result;
 }
