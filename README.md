@@ -41,6 +41,40 @@ process manager. The web app runs at
 [http://localhost:3000](http://localhost:3000), and the worker polls for jobs
 outside API routes.
 
+## Render Deployment
+
+The repo now includes a repo-root Render Blueprint at `render.yaml`.
+
+Render service layout:
+
+- `media-translator-web`
+  Next.js Web Service using `npm run build` and `npm run start`
+- `media-translator-worker`
+  Background Worker using `npm run build` and `npm run worker`
+
+The web service health check should target `GET /api/health`.
+
+Environment split for Render:
+
+- Shared:
+  `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`,
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- Web only:
+  `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `LIPSYNC_WEBHOOK_SECRET`,
+  optional `GIT_COMMIT_SHA`
+- Worker only:
+  provider-selection vars, OpenAI vars, and `WORKER_*` runtime settings
+
+Render caveats:
+
+- Worker-local files remain ephemeral; durable artifacts still live in Supabase
+  Storage
+- The Blueprint defaults worker staging/output roots to `/tmp/...`
+- The worker also runs `npm run build`, so it needs the same build-time
+  `NEXT_PUBLIC_*` vars the Next.js app expects
+- `WORKER_LIPSYNC_CALLBACK_URL` should point at the public web webhook URL if
+  you enable a non-mock lip-sync provider
+
 ## Runtime Requirements
 
 Required shared environment for the web app and worker:

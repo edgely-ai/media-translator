@@ -1,0 +1,80 @@
+services:
+  - type: web
+    name: media-translator-web
+    runtime: node
+    plan: starter
+    buildCommand: npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: LIPSYNC_WEBHOOK_SECRET
+        sync: false
+      - key: GIT_COMMIT_SHA
+        sync: false
+
+  - type: worker
+    name: media-translator-worker
+    runtime: node
+    plan: starter
+    buildCommand: npm run build
+    startCommand: npm run worker
+    maxShutdownDelaySeconds: 120
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: TRANSCRIPTION_PROVIDER
+        value: openai
+      - key: TRANSLATION_PROVIDER
+        value: openai
+      - key: TTS_PROVIDER
+        value: openai
+      - key: LIPSYNC_PROVIDER
+        value: mock
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        sync: false
+      - key: OPENAI_TRANSCRIPTION_MODEL
+        value: whisper-1
+      - key: OPENAI_TRANSLATION_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_TTS_MODEL
+        value: gpt-4o-mini-tts
+      - key: OPENAI_TTS_VOICE
+        value: coral
+      - key: OPENAI_TRANSCRIPTION_PROMPT
+        sync: false
+      - key: WORKER_POLL_INTERVAL_MS
+        value: "5000"
+      - key: WORKER_HEARTBEAT_INTERVAL_MS
+        value: "60000"
+      - key: WORKER_QUEUED_SCAN_LIMIT
+        value: "20"
+      - key: WORKER_OUTPUT_ROOT_DIR
+        value: /tmp/media-translator/output
+      - key: WORKER_STAGING_ROOT
+        value: /tmp/media-translator/staging
+      - key: WORKER_LIPSYNC_CALLBACK_URL
+        sync: false
+      - key: WORKER_STUCK_JOB_THRESHOLD_MS
+        value: "900000"
+      - key: WORKER_STUCK_JOB_SAMPLE_LIMIT
+        value: "5"

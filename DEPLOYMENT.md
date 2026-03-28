@@ -23,7 +23,9 @@ services:
 
 There is still no cloud-vendor-specific deployment config in the repository.
 The committed shape is process-level packaging: `Procfile.dev` for local
-development and `Procfile` for web/worker service commands.
+development and `Procfile` for web/worker service commands. The repo now also
+includes a Render Blueprint in `render.yaml` for a web service plus background
+worker deployment on Render.
 
 ## Environments
 
@@ -129,6 +131,85 @@ Expected behavior:
 - The worker emits structured lifecycle logs and periodic heartbeat logs while
   it is running.
 
+## Render Blueprint
+
+Committed Render Blueprint:
+
+- `render.yaml`
+
+Service model:
+
+- `media-translator-web`
+  Render Web Service using `npm run build`, `npm run start`, and
+  `healthCheckPath: /api/health`
+- `media-translator-worker`
+  Render Background Worker using `npm run build`, `npm run worker`, and
+  `maxShutdownDelaySeconds: 120`
+
+Both services are explicitly set to `plan: starter` in the Blueprint so the
+first Render deploy is less ambiguous.
+
+The Blueprint intentionally keeps Supabase external:
+
+- external Supabase Postgres via `DATABASE_URL`
+- external Supabase Storage/Auth via the existing URL/keys
+
+### Render Environment Split
+
+Shared to both services where applicable:
+
+- `DATABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Web only:
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `LIPSYNC_WEBHOOK_SECRET`
+- optional `GIT_COMMIT_SHA`
+
+Worker only:
+
+- `TRANSCRIPTION_PROVIDER`
+- `TRANSCRIPTION_MOCK_TEXT`
+- `TRANSLATION_PROVIDER`
+- `TRANSLATION_MOCK_PREFIX`
+- `TTS_PROVIDER`
+- `LIPSYNC_PROVIDER`
+- `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
+- `OPENAI_TRANSCRIPTION_MODEL`
+- `OPENAI_TRANSCRIPTION_PROMPT`
+- `OPENAI_TRANSLATION_MODEL`
+- `OPENAI_TTS_MODEL`
+- `OPENAI_TTS_VOICE`
+- `WORKER_POLL_INTERVAL_MS`
+- `WORKER_HEARTBEAT_INTERVAL_MS`
+- `WORKER_QUEUED_SCAN_LIMIT`
+- `WORKER_OUTPUT_ROOT_DIR`
+- `WORKER_STAGING_ROOT`
+- `WORKER_LIPSYNC_CALLBACK_URL`
+- `WORKER_STUCK_JOB_THRESHOLD_MS`
+- `WORKER_STUCK_JOB_SAMPLE_LIMIT`
+
+### Render-Specific Notes
+
+- Render should use the existing health route at `/api/health` for the web
+  service.
+- The worker remains a long-lived poller; it is not a job-runner route.
+- Worker-local disk is ephemeral. The Blueprint defaults the worker to `/tmp`
+  paths for staging and output, while durable artifacts remain in Supabase
+  Storage.
+- The worker start command uses `npm run worker`, so `tsx` must remain
+  available at runtime.
+- The worker also runs `npm run build`, so it must receive any build-time
+  `NEXT_PUBLIC_*` vars used by the Next.js app even when those vars are mainly
+  needed by the web service at runtime.
+- `WORKER_LIPSYNC_CALLBACK_URL` should be set to the public Render web URL plus
+  `/api/webhooks/lipsync` when a non-mock lip-sync provider is enabled.
+
 ## Worker / Function Topology
 
 Implemented:
@@ -156,6 +237,9 @@ Implemented:
   supervised restarts, autoscaling, and alerting remain deployment-platform
   concerns.
 - Stuck-job visibility is log/script driven rather than automatic remediation.
+- Render wiring is now committed, but platform-specific domains, rollout
+  strategy, and secret management still need to be completed in the Render
+  dashboard/workspace.
 
 ## Operational Recommendations
 
