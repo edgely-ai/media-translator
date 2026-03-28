@@ -88,6 +88,14 @@ Required shared environment for the web app and worker:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+Supabase URL format expectations:
+
+- `NEXT_PUBLIC_SUPABASE_URL` should look like
+  `https://<project-ref>.supabase.co`
+- `DATABASE_URL` should use the Postgres host, which for hosted Supabase
+  typically looks like
+  `postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres`
+
 Worker-specific environment used by the current runtime:
 
 - `WORKER_POLL_INTERVAL_MS`
@@ -155,5 +163,6 @@ credentials or live external services:
 - `npm run worker` runs the worker service
 - `npm run worker:once` runs a single worker pickup/execution cycle
 - `npm run ops:stuck-jobs` reports potentially stuck active jobs
-- `npm run ops:check-worker-env` reports lightweight worker runtime checks
+- `npm run ops:check-worker-env` reports lightweight worker runtime checks,
+  including malformed Supabase URL detection
 - `npm run lint` runs ESLint

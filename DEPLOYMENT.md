@@ -164,6 +164,14 @@ Shared to both services where applicable:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+Supabase host expectations:
+
+- `NEXT_PUBLIC_SUPABASE_URL` should be the project API URL:
+  `https://<project-ref>.supabase.co`
+- `DATABASE_URL` should be the Postgres connection string, which for Supabase
+  hosted Postgres usually uses `db.<project-ref>.supabase.co` as the hostname
+  rather than `<project-ref>.supabase.co`
+
 Web only:
 
 - `STRIPE_SECRET_KEY`
@@ -270,6 +278,9 @@ Health and routine checks:
 - Potentially stuck jobs: `npm run ops:stuck-jobs`
 - Heartbeat warnings for aged active jobs are emitted from the worker when the
   configured stuck-job threshold is exceeded.
+- The worker env summary now also surfaces malformed `DATABASE_URL` /
+  `NEXT_PUBLIC_SUPABASE_URL` values and flags Supabase database hosts missing
+  the `db.` subdomain
 
 Still recommended next work:
 
