@@ -48,9 +48,11 @@ The repo now includes a repo-root Render Blueprint at `render.yaml`.
 Render service layout:
 
 - `media-translator-web`
-  Next.js Web Service using `npm run build` and `npm run start`
+  Next.js Web Service using `npm ci --include=dev && npm run build` and
+  `npm run start`
 - `media-translator-worker`
-  Background Worker using `npm run build` and `npm run worker`
+  Background Worker using `npm ci --include=dev && npm run build` and
+  `npm run worker`
 
 The web service health check should target `GET /api/health`.
 
@@ -72,6 +74,8 @@ Render caveats:
 - The Blueprint defaults worker staging/output roots to `/tmp/...`
 - The worker also runs `npm run build`, so it needs the same build-time
   `NEXT_PUBLIC_*` vars the Next.js app expects
+- The Blueprint installs dependencies explicitly during Render builds, including
+  dev-time build tooling needed by Next/Tailwind
 - `WORKER_LIPSYNC_CALLBACK_URL` should point at the public web webhook URL if
   you enable a non-mock lip-sync provider
 

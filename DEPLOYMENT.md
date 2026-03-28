@@ -140,11 +140,12 @@ Committed Render Blueprint:
 Service model:
 
 - `media-translator-web`
-  Render Web Service using `npm run build`, `npm run start`, and
+  Render Web Service using `npm ci --include=dev && npm run build`,
+  `npm run start`, and
   `healthCheckPath: /api/health`
 - `media-translator-worker`
-  Render Background Worker using `npm run build`, `npm run worker`, and
-  `maxShutdownDelaySeconds: 120`
+  Render Background Worker using `npm ci --include=dev && npm run build`,
+  `npm run worker`, and `maxShutdownDelaySeconds: 120`
 
 Both services are explicitly set to `plan: starter` in the Blueprint so the
 first Render deploy is less ambiguous.
@@ -207,6 +208,9 @@ Worker only:
 - The worker also runs `npm run build`, so it must receive any build-time
   `NEXT_PUBLIC_*` vars used by the Next.js app even when those vars are mainly
   needed by the web service at runtime.
+- Render executes the build command you specify; the Blueprint now installs
+  dependencies explicitly with `npm ci --include=dev` before building so Next
+  and build-time tooling are available.
 - `WORKER_LIPSYNC_CALLBACK_URL` should be set to the public Render web URL plus
   `/api/webhooks/lipsync` when a non-mock lip-sync provider is enabled.
 

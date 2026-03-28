@@ -3,7 +3,7 @@ services:
     name: media-translator-web
     runtime: node
     plan: starter
-    buildCommand: npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start
     healthCheckPath: /api/health
     envVars:
@@ -28,7 +28,7 @@ services:
     name: media-translator-worker
     runtime: node
     plan: starter
-    buildCommand: npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run worker
     maxShutdownDelaySeconds: 120
     envVars:
